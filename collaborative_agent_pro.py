@@ -691,9 +691,219 @@ CONTEXT_REPORT.md
         current_content += test_section
         readme_path.write_text(current_content)
 
+class RalphWiggumLoop:
+    """
+    Autonomous 'Ralph Wiggum' loop for persistent task completion.
+
+    The Ralph Wiggum pattern shifts from chatbot (one-shot) to agent (iterate until done).
+    Components:
+    - Progress Tracker: Reads progress.txt and prd.json at each iteration
+    - Completion Promise: Exits only when <promise>COMPLETE</promise> is output
+    - Safety Valve: Max iterations to prevent runaway execution
+    """
+
+    PROMISE_COMPLETE = "<promise>COMPLETE</promise>"
+    PROGRESS_FILE = "progress.txt"
+    PRD_FILE = "prd.json"
+
+    def __init__(self, project_path: Path, max_iterations: int = 20):
+        self.project_path = project_path
+        self.max_iterations = max_iterations
+        self.current_iteration = 0
+        self.progress_path = project_path / self.PROGRESS_FILE
+        self.prd_path = project_path / self.PRD_FILE
+        logger.info(f"RalphWiggumLoop initialized: max_iterations={max_iterations}")
+
+    def initialize_progress(self, task_description: str, tasks: List[Dict] = None):
+        """Initialize progress tracking files for a new Ralph loop"""
+
+        # Initialize progress.txt
+        progress_content = f"""# Ralph Wiggum Loop Progress
+# Task: {task_description}
+# Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+## Current Status
+- Iteration: 0
+- Phase: INITIALIZED
+- Last Action: None
+- Blockers: None
+
+## History
+[{datetime.now().strftime('%H:%M:%S')}] Loop initialized
+"""
+        self.progress_path.write_text(progress_content)
+        logger.info(f"Initialized {self.PROGRESS_FILE}")
+
+        # Initialize prd.json if tasks provided
+        if tasks:
+            prd_content = {
+                "task": task_description,
+                "created": datetime.now().isoformat(),
+                "tasks": tasks,
+                "completion_percentage": 0
+            }
+        else:
+            prd_content = {
+                "task": task_description,
+                "created": datetime.now().isoformat(),
+                "tasks": [
+                    {"id": 1, "description": "Write failing tests", "completed": False},
+                    {"id": 2, "description": "Implement code to pass tests", "completed": False},
+                    {"id": 3, "description": "Verify all tests pass", "completed": False},
+                    {"id": 4, "description": "Final review and cleanup", "completed": False}
+                ],
+                "completion_percentage": 0
+            }
+
+        with open(self.prd_path, 'w') as f:
+            json.dump(prd_content, f, indent=2)
+        logger.info(f"Initialized {self.PRD_FILE}")
+
+        return progress_content, prd_content
+
+    def read_progress(self) -> Tuple[str, Dict]:
+        """Read current progress state from tracking files"""
+
+        progress_text = ""
+        prd_data = {}
+
+        if self.progress_path.exists():
+            progress_text = self.progress_path.read_text()
+        else:
+            logger.warning(f"{self.PROGRESS_FILE} not found")
+
+        if self.prd_path.exists():
+            try:
+                with open(self.prd_path) as f:
+                    prd_data = json.load(f)
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse {self.PRD_FILE}: {e}")
+        else:
+            logger.warning(f"{self.PRD_FILE} not found")
+
+        return progress_text, prd_data
+
+    def update_progress(self, status: str, action: str, blockers: str = "None", phase: str = "WORKING"):
+        """Update progress.txt with current state"""
+
+        progress_text, _ = self.read_progress()
+
+        # Update the status section
+        lines = progress_text.split('\n')
+        new_lines = []
+        in_status = False
+
+        for line in lines:
+            if line.startswith('## Current Status'):
+                in_status = True
+                new_lines.append(line)
+                new_lines.append(f"- Iteration: {self.current_iteration}")
+                new_lines.append(f"- Phase: {phase}")
+                new_lines.append(f"- Last Action: {action}")
+                new_lines.append(f"- Blockers: {blockers}")
+                continue
+
+            if in_status and line.startswith('- '):
+                continue
+
+            if in_status and (line.startswith('## ') or line == ''):
+                in_status = False
+
+            if not in_status:
+                new_lines.append(line)
+
+        # Add history entry
+        history_entry = f"[{datetime.now().strftime('%H:%M:%S')}] Iter {self.current_iteration}: {action}"
+
+        for i, line in enumerate(new_lines):
+            if line.startswith('## History'):
+                new_lines.insert(i + 1, history_entry)
+                break
+
+        self.progress_path.write_text('\n'.join(new_lines))
+        logger.debug(f"Updated progress: {action}")
+
+    def update_prd_task(self, task_id: int, completed: bool):
+        """Mark a task as completed in prd.json"""
+
+        _, prd_data = self.read_progress()
+
+        if not prd_data or 'tasks' not in prd_data:
+            logger.warning("No PRD data to update")
+            return
+
+        for task in prd_data['tasks']:
+            if task.get('id') == task_id:
+                task['completed'] = completed
+                break
+
+        # Update completion percentage
+        total = len(prd_data['tasks'])
+        completed_count = sum(1 for t in prd_data['tasks'] if t.get('completed'))
+        prd_data['completion_percentage'] = int((completed_count / total) * 100) if total > 0 else 0
+
+        with open(self.prd_path, 'w') as f:
+            json.dump(prd_data, f, indent=2)
+
+        logger.info(f"PRD updated: task {task_id} = {completed}, {prd_data['completion_percentage']}% complete")
+
+    def is_complete(self, prd_data: Dict) -> bool:
+        """Check if all tasks in PRD are complete"""
+
+        if not prd_data or 'tasks' not in prd_data:
+            return False
+
+        return all(task.get('completed', False) for task in prd_data['tasks'])
+
+    def check_safety_valve(self) -> bool:
+        """Check if we've exceeded max iterations"""
+
+        if self.current_iteration >= self.max_iterations:
+            logger.warning(f"Safety valve triggered: {self.current_iteration} >= {self.max_iterations}")
+            return True
+        return False
+
+    def get_loop_prompt(self, task: str, context: str = "") -> str:
+        """Generate the Ralph Wiggum loop prompt for the AI"""
+
+        progress_text, prd_data = self.read_progress()
+
+        return f"""You are operating in an autonomous 'Ralph Wiggum' loop. Your goal is not to finish in one turn, but to iterate until the task is verified complete.
+
+CURRENT STATE (Iteration {self.current_iteration}/{self.max_iterations}):
+--- progress.txt ---
+{progress_text}
+--- end progress.txt ---
+
+--- prd.json ---
+{json.dumps(prd_data, indent=2)}
+--- end prd.json ---
+
+TASK: {task}
+
+{context}
+
+INSTRUCTIONS:
+1. Track Progress: You have read the current state above. Analyze what has been done and what remains.
+2. Execute TDD: Write a failing test first, then implement the code, then run the test.
+3. Persistence: If a test fails or a command errors, do NOT ask for help. Analyze the error, fix the code, and try again.
+4. Update State: Before ending your response, specify updates for progress.txt with your current status.
+5. Exit Condition: Only output the exact string {self.PROMISE_COMPLETE} when ALL tests pass AND the task list in prd.json is 100% checked off.
+
+RESPONSE FORMAT:
+1. Analysis of current state
+2. Action to take this iteration
+3. Code/implementation
+4. Test results
+5. Progress update (what to write to progress.txt)
+6. If ALL tasks complete and verified: {self.PROMISE_COMPLETE}
+
+Begin your iteration now:"""
+
+
 class TestRunner:
     """Automatically run pytest on generated code"""
-    
+
     def __init__(self, project_path: Path):
         self.project_path = project_path
     
@@ -1382,6 +1592,196 @@ Generate the refined code now."""
 
 SPEC:\n{spec}\n\nOUTPUT:\n{output[:6000]}"""
         return self.manager.generate(self.cfg.manager_model, prompt, 300)
+
+    def run_ralph_loop(self, task: str, max_iterations: int = 20, model_preference: str = None) -> Dict:
+        """
+        Run an autonomous Ralph Wiggum loop until task completion or safety valve triggers.
+
+        The loop:
+        1. Reads progress state (progress.txt, prd.json)
+        2. Executes one iteration of work
+        3. Checks for completion or errors
+        4. Updates state and repeats
+        """
+
+        # Ensure we have a project
+        if not self.project_manager.current_project:
+            # Create a new project for this Ralph loop
+            project_name = f"ralph_loop_{sanitize_folder_name(task[:30])}"
+            project_path = self.project_manager.create_project(project_name, task)
+            print(f"\n📁 Created Ralph Loop project: {project_path.name}")
+        else:
+            project_path = self.project_manager.current_project
+            print(f"\n📁 Using existing project: {project_path.name}")
+
+        # Initialize Ralph loop
+        ralph = RalphWiggumLoop(project_path, max_iterations)
+
+        # Initialize progress tracking files
+        print(f"\n🔄 Initializing Ralph Wiggum Loop")
+        print(f"   Task: {task}")
+        print(f"   Max Iterations: {max_iterations}")
+        print(f"   Safety Valve: Enabled")
+
+        ralph.initialize_progress(task)
+
+        # Choose model
+        chosen_model = self.choose_model(model_preference)
+        self.current_model = chosen_model
+        model_name = "GLM" if "glm" in chosen_model.lower() else "Qwen"
+        print(f"🤖 Using {model_name} ({chosen_model})")
+
+        # Main Ralph loop
+        completed = False
+        final_result = None
+
+        print(f"\n{'='*70}")
+        print(f"🌀 RALPH WIGGUM LOOP STARTING")
+        print(f"{'='*70}")
+
+        while not ralph.check_safety_valve() and not completed:
+            ralph.current_iteration += 1
+
+            print(f"\n{'─'*70}")
+            print(f"🔁 Iteration {ralph.current_iteration}/{ralph.max_iterations}")
+            print(f"{'─'*70}")
+
+            # Get current context
+            context = ""
+            if self.last_parsed:
+                context = f"SPEC:\n{self.last_parsed.spec}\n\nTASKS:\n{self.last_parsed.tasks}"
+
+            # Generate loop prompt
+            prompt = ralph.get_loop_prompt(task, context)
+
+            # Execute iteration
+            try:
+                print(f"🔧 Executing iteration...")
+                t0 = now_s()
+
+                print("\n--- RALPH OUTPUT ---")
+                full_response = []
+                for chunk in self.coder.generate_stream(chosen_model, prompt, timeout=300):
+                    print(chunk, end='', flush=True)
+                    full_response.append(chunk)
+
+                response_text = ''.join(full_response)
+                print("\n--- END OUTPUT ---\n")
+
+                elapsed = now_s() - t0
+                print(f"⏱️  Iteration completed in {elapsed:.1f}s")
+
+                # Check for completion promise
+                if RalphWiggumLoop.PROMISE_COMPLETE in response_text:
+                    print(f"\n✅ COMPLETION PROMISE DETECTED!")
+                    completed = True
+
+                    # Verify by checking PRD
+                    _, prd_data = ralph.read_progress()
+                    if ralph.is_complete(prd_data):
+                        print(f"✅ PRD verification: All tasks complete!")
+                    else:
+                        print(f"⚠️  PRD verification: Some tasks still incomplete")
+                        # Continue loop if PRD not actually complete
+                        completed = False
+                        ralph.update_progress(
+                            "Premature completion claim",
+                            "AI claimed complete but PRD not 100%",
+                            "PRD tasks still pending",
+                            "VERIFICATION_FAILED"
+                        )
+                        continue
+
+                # Extract and apply code if present
+                code_blocks = self._extract_code_blocks(response_text)
+                if code_blocks:
+                    for filename, code in code_blocks.items():
+                        filepath = project_path / filename
+                        filepath.parent.mkdir(parents=True, exist_ok=True)
+                        filepath.write_text(code)
+                        print(f"  📝 Wrote: {filename}")
+
+                # Run tests if available
+                test_runner = TestRunner(project_path)
+                if test_runner.has_tests():
+                    print(f"\n🧪 Running tests...")
+                    test_success, test_output = test_runner.run_tests()
+                    if test_success:
+                        print(f"✅ Tests passed!")
+                        ralph.update_progress(
+                            "Tests passing",
+                            "All tests passed",
+                            "None",
+                            "TESTS_PASSING"
+                        )
+                    else:
+                        print(f"❌ Tests failed - will retry")
+                        # Extract failure summary
+                        failure_lines = [l for l in test_output.split('\n') if 'FAILED' in l or 'Error' in l]
+                        blocker = '; '.join(failure_lines[:3]) if failure_lines else "Test failures"
+                        ralph.update_progress(
+                            "Tests failing",
+                            "Tests failed, analyzing for retry",
+                            blocker[:200],
+                            "TESTS_FAILING"
+                        )
+                else:
+                    ralph.update_progress(
+                        "No tests to run",
+                        "Iteration completed, no test files found",
+                        "None",
+                        "WORKING"
+                    )
+
+                # Parse any progress updates from the response
+                if "Progress update:" in response_text.lower() or "status:" in response_text.lower():
+                    # The AI provided a status update, log it
+                    logger.info(f"Iteration {ralph.current_iteration} completed with status update")
+
+            except Exception as e:
+                print(f"\n❌ Iteration error: {e}")
+                logger.exception(f"Ralph loop iteration {ralph.current_iteration} failed")
+                ralph.update_progress(
+                    "Error occurred",
+                    f"Exception: {str(e)[:100]}",
+                    str(e)[:200],
+                    "ERROR"
+                )
+                # Continue to next iteration (persistence!)
+
+        # Loop complete - summarize
+        print(f"\n{'='*70}")
+        print(f"🏁 RALPH WIGGUM LOOP FINISHED")
+        print(f"{'='*70}")
+
+        _, final_prd = ralph.read_progress()
+        completion_pct = final_prd.get('completion_percentage', 0) if final_prd else 0
+
+        if completed:
+            print(f"✅ Status: COMPLETED")
+            print(f"📊 PRD Completion: {completion_pct}%")
+        elif ralph.check_safety_valve():
+            print(f"⚠️  Status: SAFETY VALVE TRIGGERED")
+            print(f"📊 PRD Completion: {completion_pct}%")
+            print(f"💡 Tip: Review progress.txt and continue manually or increase --max-iterations")
+        else:
+            print(f"❓ Status: UNKNOWN EXIT")
+
+        print(f"🔁 Total Iterations: {ralph.current_iteration}")
+        print(f"📁 Project: {project_path}")
+        print(f"📋 Progress: {ralph.progress_path}")
+        print(f"📄 PRD: {ralph.prd_path}")
+
+        return {
+            "success": completed,
+            "iterations": ralph.current_iteration,
+            "max_iterations": ralph.max_iterations,
+            "safety_valve_triggered": ralph.check_safety_valve(),
+            "completion_percentage": completion_pct,
+            "project_path": str(project_path),
+            "progress_file": str(ralph.progress_path),
+            "prd_file": str(ralph.prd_path)
+        }
     
     def interactive(self):
         print("\n" + "="*78)
@@ -1393,6 +1793,8 @@ SPEC:\n{spec}\n\nOUTPUT:\n{output[:6000]}"""
         print("  execute             - Run sequential generation (default model)")
         print("  execute glm         - Run with GLM")
         print("  execute qwen        - Run with Qwen")
+        print("  ralph <task>        - Start autonomous Ralph Wiggum loop")
+        print("  ralph --max 30      - Ralph loop with custom max iterations")
         print("  refine              - Improve code based on feedback")
         print("  manager             - Show last manager response")
         print("  templates           - List available templates")
@@ -1401,6 +1803,12 @@ SPEC:\n{spec}\n\nOUTPUT:\n{output[:6000]}"""
         print("  :history            - Show conversation history")
         print("  :clear              - Clear conversation")
         print("  quit                - Exit")
+        print("")
+        print("Ralph Wiggum Loop:")
+        print("  The Ralph loop is an autonomous agent mode that iterates until")
+        print("  the task is verified complete. It tracks progress via progress.txt")
+        print("  and prd.json, and only exits when <promise>COMPLETE</promise> is")
+        print("  reached or the safety valve (max iterations) triggers.")
         print("="*78)
         logger.info("Starting interactive session")
         
@@ -1471,10 +1879,76 @@ SPEC:\n{spec}\n\nOUTPUT:\n{output[:6000]}"""
                     print(f"\n🤖 {self.last_manager_text or '(none)'}")
                     continue
                 
+                if inp.startswith("ralph"):
+                    # Parse ralph command: ralph <task> [--max N] [--model glm/qwen]
+                    parts = inp.split()
+                    max_iterations = 20
+                    model_pref = None
+                    task_parts = []
+
+                    i = 1
+                    while i < len(parts):
+                        if parts[i] in ('--max', '--max-iterations', '-m'):
+                            if i + 1 < len(parts):
+                                try:
+                                    max_iterations = int(parts[i + 1])
+                                    i += 2
+                                    continue
+                                except ValueError:
+                                    print(f"❌ Invalid max iterations: {parts[i + 1]}")
+                                    break
+                        elif parts[i] in ('--model', '-M'):
+                            if i + 1 < len(parts):
+                                model_pref = parts[i + 1]
+                                i += 2
+                                continue
+                        else:
+                            task_parts.append(parts[i])
+                        i += 1
+
+                    task = ' '.join(task_parts)
+
+                    if not task:
+                        # Prompt for task if not provided
+                        task = input("\n💬 What task should Ralph work on? ").strip()
+
+                    if not task:
+                        print("❌ No task provided for Ralph loop")
+                        continue
+
+                    # Confirm before starting
+                    print(f"\n🌀 Starting Ralph Wiggum Loop")
+                    print(f"   Task: {task}")
+                    print(f"   Max Iterations: {max_iterations}")
+                    print(f"   Model: {model_pref or 'default'}")
+                    confirm = input("\n   Start loop? (y/n): ").strip().lower()
+
+                    if confirm not in ('y', 'yes'):
+                        print("   Cancelled.")
+                        continue
+
+                    # First, get a plan from the manager if we don't have one
+                    if not self.last_parsed or not self.last_parsed.plan_ready:
+                        print("\n📋 Getting plan from manager first...")
+                        self.ask_manager(task)
+
+                    result = self.run_ralph_loop(task, max_iterations, model_pref)
+
+                    if result.get('success'):
+                        print(f"\n🎉 Ralph loop completed successfully!")
+                    elif result.get('safety_valve_triggered'):
+                        print(f"\n⚠️  Ralph loop hit safety valve after {result['iterations']} iterations")
+                        print(f"   Progress: {result.get('completion_percentage', 0)}%")
+                        print(f"   Review {result['progress_file']} for status")
+                    else:
+                        print(f"\n❓ Ralph loop ended unexpectedly")
+
+                    continue
+
                 if inp.startswith("execute"):
                     parts = inp.split()
                     model_pref = parts[1] if len(parts) > 1 else None
-                    
+
                     # FIX v4.2.1: Allow execution even without manager if manual target set
                     if not self.manual_target_set:
                         if not self.last_parsed:
