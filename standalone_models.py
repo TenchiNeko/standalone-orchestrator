@@ -142,6 +142,7 @@ class TaskState:
 
     blamed_source_files: List[str] = field(default_factory=list)  # v0.9.6
     edit_feedback: List[str] = field(default_factory=list)  # v0.9.9b: edit repair feedback (survives serialization)
+    rca_history: List[Dict[str, Any]] = field(default_factory=list)  # v1.0
 
     def add_failure(self, result: IterationResult):
         self.failure_history.append({
