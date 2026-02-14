@@ -1,0 +1,10 @@
+# Core (only external dependency)
+httpx>=0.24.0,<1.0
+
+# Required in task venvs (installed by orchestrator for benchmark tasks)
+# flask
+# pytest
+
+# Development
+ruff>=0.4.0          # linting
+mypy>=1.10.0         # type checking

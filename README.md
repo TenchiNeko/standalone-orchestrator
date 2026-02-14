@@ -1,8 +1,25 @@
 # 🧠 The Unbroken Method — Standalone Orchestrator
 
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![No Frameworks](https://img.shields.io/badge/frameworks-none-red.svg)](#design-philosophy)
+[![Local LLMs](https://img.shields.io/badge/LLMs-100%25%20local-purple.svg)](#architecture)
+
 **Fully autonomous multi-agent coding system running on local LLMs. Zero API costs.**
 
+> Plan → Build → Test → Debug → Fix — iterating until all tests pass, with no human in the loop and no cloud APIs. Runs entirely on your own hardware with Ollama.
+
 Give it a task description. It plans, builds, tests, debugs, and fixes — iterating until all tests pass or it escalates to you with a detailed handoff report. No human in the loop. No cloud APIs. Everything runs on your own GPUs.
+
+### Why This Exists
+
+| | Frameworks (LangChain, CrewAI, AutoGen) | This Project |
+|---|---|---|
+| **Control** | Framework owns the loop, you fill in callbacks | You own every line of the control flow |
+| **Dependencies** | 50+ packages, breaking changes monthly | Python stdlib + httpx |
+| **Debugging** | Stack traces through 12 layers of abstraction | Read the Python, read the Ollama logs |
+| **Lock-in** | Married to the framework's abstractions | Swap Ollama for vLLM/llama.cpp by changing one URL |
+| **Cost** | Usually wraps OpenAI/Anthropic APIs | 100% local, zero API costs |
 
 ```
 Task: "Build a bookmark manager REST API with Flask..."
@@ -37,8 +54,8 @@ Cortana (Dell 7920) — 4x GPU, 64GB VRAM
 ┌─────────────────────────────────────────────────────────────┐
 │                                                             │
 │  Instance 1 (port 11435)          Instance 2 (port 11436)   │
-│  Llama 3.3 70B                    Qwen 2.5 Coder 7B/14B    │
-│  GPUs 1+2+3 (48GB)               GPU 0 (16GB)              │
+│  Qwen 3 Coder 80B                    Qwen 2.5 Coder 7B/14B    │
+│  GPUs 1+2+3 (48GB VRAM)               GPU 0 (16GB)              │
 │  ┌──────────┐ ┌──────────┐       ┌──────────┐              │
 │  │ Planner  │ │ Builder  │       │ Explorer │              │
 │  │ (reason) │ │ (code)   │       │ Init     │              │
@@ -73,7 +90,7 @@ PVE Node (homeserver) — Qwen 2.5 Coder 7B
 └─────────────────────────────────────────────────────────────┘
 ```
 
-Both Ollama instances run simultaneously — **no model swapping**. The 70B handles planning and code generation while the 7B/14B handles exploration, testing, and curation in parallel.
+Both Ollama instances run simultaneously — **no model swapping**. The 80B handles planning and code generation while the 7B/14B handles exploration, testing, and curation in parallel.
 
 ---
 
@@ -161,12 +178,12 @@ This gives the model exact function signatures and constructor parameters in ~20
 |------|------|---------|
 | `prompts/initializer.txt` | Set up workspace, git repo, venv, install deps | Qwen 7B/14B |
 | `prompts/explore.txt` | Analyze requirements, identify files and patterns | Qwen 7B/14B |
-| `prompts/plan.txt` | Generate DoD criteria with verification commands | Llama 70B |
-| `prompts/build.txt` | Generate source code files | Llama 70B |
-| `prompts/build_markdown.txt` | Alternative build format for markdown output | Llama 70B |
-| `prompts/test_gen.txt` | Generate test files against source | Llama 70B |
+| `prompts/plan.txt` | Generate DoD criteria with verification commands | Qwen 80B |
+| `prompts/build.txt` | Generate source code files | Qwen 80B |
+| `prompts/build_markdown.txt` | Alternative build format for markdown output | Qwen 80B |
+| `prompts/test_gen.txt` | Generate test files against source | Qwen 80B |
 | `prompts/test.txt` | Run tests, report results | Qwen 7B/14B |
-| `prompts/edit_repair.txt` | Surgical SEARCH/REPLACE fixes | Llama 70B |
+| `prompts/edit_repair.txt` | Surgical SEARCH/REPLACE fixes | Qwen 80B |
 
 ### Subconscious Daemon (runs on PVE node)
 
@@ -234,7 +251,7 @@ Three layers of accumulated knowledge, each operating at a different timescale:
 ```
 Cortana (Dell 7920 Workstation)
 ├─ GPU 0: RTX 5060 Ti 16GB  → Ollama Instance 2 (port 11436) → Qwen 2.5 Coder 7B
-├─ GPU 1: RTX 3090 24GB     → Ollama Instance 1 (port 11435) → Llama 3.3 70B
+├─ GPU 1: RTX 3090 24GB     → Ollama Instance 1 (port 11435) → Qwen 3 Coder 80B
 ├─ GPU 2: RTX 4070 Super 12GB → Ollama Instance 1 (tensor parallel)
 ├─ GPU 3: RTX 4070 Super 12GB → Ollama Instance 1 (tensor parallel)
 └─ Total: 64GB VRAM, no model swapping
@@ -250,14 +267,14 @@ PVE Node (homeserver)
 ### 1. Set up Ollama instances
 
 ```bash
-# Instance 1: Heavy reasoning (70B)
+# Instance 1: Heavy reasoning (80B)
 CUDA_VISIBLE_DEVICES=1,2,3 OLLAMA_HOST=0.0.0.0:11435 ollama serve
 
 # Instance 2: Fast agents (7B/14B)
 CUDA_VISIBLE_DEVICES=0 OLLAMA_HOST=0.0.0.0:11436 ollama serve
 
 # Pull models
-OLLAMA_HOST=localhost:11435 ollama pull llama3.3:70b
+OLLAMA_HOST=localhost:11435 ollama pull qwen3-coder:80b
 OLLAMA_HOST=localhost:11436 ollama pull qwen2.5-coder:7b
 ```
 
@@ -321,7 +338,7 @@ This project follows the **library approach** — not the framework approach. Th
 | Context engineering | Anthropic research | Compact API contracts to prevent context rot |
 | Localization → Repair → Validation | Agentless (UIUC) | RCA identifies root cause, retry fixes targeted files |
 | ACE playbook evolution | Stanford/SambaNova | Subconscious daemon with delta updates + quality tracking |
-| Architect/Editor split | Aider | 70B reasons about the problem, 7B/14B handles fast execution |
+| Architect/Editor split | Aider | 80B reasons about the problem, 7B/14B handles fast execution |
 
 ---
 
@@ -330,16 +347,26 @@ This project follows the **library approach** — not the framework approach. Th
 **v1.0** — Active development. The orchestrator successfully completes multi-file Flask REST API tasks with 4-8 source+test files in 1-3 iterations. Typical benchmark: bookmark manager API with models, database, validators, routes, and comprehensive tests.
 
 Known limitations:
-- Edit repair SEARCH/REPLACE matching has ~50% apply rate with 70B models (fuzzy matching helps but isn't perfect)
+- Edit repair SEARCH/REPLACE matching has ~50% apply rate with 80B models (fuzzy matching helps but isn't perfect)
 - Test files for complex endpoints (app.py with 6+ routes) remain the hardest to generate correctly on first attempt
 - The subconscious daemon's training pair extraction is implemented but LoRA fine-tuning pipeline is not yet automated end-to-end
 
 ---
 
+## Star History
+
+If this project is useful to you, a ⭐ helps others find it.
+
 ## License
 
-This project is open source. Use it, fork it, break it, fix it.
+MIT License — see [LICENSE](LICENSE) for details.
 
 ---
 
-*Built with patience, frustration, and a mass quantity of GPU hours by [@TenchiNeko](https://github.com/TenchiNeko).*
+*Built with patience, mass quantities of GPU hours, and zero framework dependencies by [@TenchiNeko](https://github.com/TenchiNeko).*
+
+---
+
+### Keywords
+
+`autonomous-coding` `ai-agents` `local-llm` `ollama` `multi-agent` `code-generation` `self-improving` `test-driven` `no-framework` `multi-gpu` `qwen` `agentic` `orchestrator` `swe-bench` `ace-framework`
