@@ -46,7 +46,7 @@ class PlaybookReader:
     def __init__(self, playbook_path: str = "/shared/playbook.json"):
         self.path = Path(playbook_path)
         self._cache = None
-        self._cache_mtime = 0
+        self._cache_mtime: float = 0
 
     def _load(self) -> Optional[dict]:
         """Load playbook, with simple mtime-based caching."""

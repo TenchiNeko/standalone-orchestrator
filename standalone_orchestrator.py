@@ -163,7 +163,7 @@ class Orchestrator:
         # v0.9.0: Librarian status
         if self.librarian:
             try:
-                lib_stats = get_librarian_stats(db_path=self.librarian_db_path)
+                lib_stats = get_librarian_stats(db_path=self.librarian_db_path or "")
                 logger.info(f"Librarian: ✅ {lib_stats.get('journal_entries', 0)} journal entries, "
                            f"{lib_stats.get('snippets', 0)} snippets")
             except Exception:
@@ -200,7 +200,7 @@ class Orchestrator:
             if result.unrecoverable:
                 logger.error(f"❌ UNRECOVERABLE ERROR: {result.error}")
                 self._export_traces()
-                self._escalate(task_state, result.error)
+                self._escalate(task_state, result.error or "Unknown error")
                 return False
 
             logger.warning(f"⚠️ DoD FAILED: {result.error}")
@@ -492,7 +492,7 @@ class Orchestrator:
 
         # Build the sequence with dependency tracking
         sequence = []
-        built_so_far = []
+        built_so_far: List[str] = []
 
         for f in source_files:
             sequence.append({
@@ -629,7 +629,7 @@ class Orchestrator:
         return dependents
 
     def _run_micro_builds(self, task_state: TaskState, sequence: list,
-                          memory_context: str = "", rca_edits_context: str = "") -> 'tuple':
+                          memory_context: str = "", rca_edits_context: str = "") -> AgentResult:
         """
         Execute sequential micro-builds: one file at a time with verification.
 
@@ -3761,7 +3761,7 @@ Do NOT rewrite from scratch. Start from this code and fix the failing parts.
             logger.info("  🛡️ RCA VETO: deterministic fix applied (skipped LLM RCA)")
         else:
             # Try LLM-based RCA
-            rca_result: Optional[Dict[str, Any]] = self.agent_runner.run_rca(task_state, result)
+            rca_result = self.agent_runner.run_rca(task_state, result)  # type: ignore[assignment]
 
             # v0.7.3: Post-RCA filters to prevent hallucination spirals
             if rca_result:
@@ -3947,14 +3947,14 @@ Do NOT rewrite from scratch. Start from this code and fix the failing parts.
             # Redirect to regenerating test files from scratch.
             test_files = [f.name for f in self.working_dir.glob("test_*.py")]
             new_edits = []
-            for tf in test_files:
-                test_result = self._run_test_file(tf)
+            for tf_name in test_files:
+                test_result = self._run_test_file(tf_name)
                 if test_result.get("errors", 0) > 0 or test_result.get("passed", 0) == 0:
-                    source_file = tf.replace("test_", "")
+                    source_file = tf_name.replace("test_", "")
                     new_edits.append({
-                        "file": tf,
+                        "file": tf_name,
                         "action": "regenerate",
-                        "details": f"Delete and rewrite {tf} from scratch. Read {source_file} first to get correct class/function names and imports."
+                        "details": f"Delete and rewrite {tf_name} from scratch. Read {source_file} first to get correct class/function names and imports."
                     })
 
             if new_edits:
@@ -3976,13 +3976,13 @@ Do NOT rewrite from scratch. Start from this code and fix the failing parts.
         if eq_filtered and not filtered_edits:
             # All edits were __eq__ hallucinations — check what's actually failing
             test_files = [f.name for f in self.working_dir.glob("test_*.py")]
-            for tf in test_files:
-                test_result = self._run_test_file(tf)
+            for tf_name in test_files:
+                test_result = self._run_test_file(tf_name)
                 if test_result.get("errors", 0) > 0:
                     error_output = test_result.get("output", "")
                     if "NameError" in error_output or "ImportError" in error_output:
                         filtered_edits.append({
-                            "file": tf,
+                            "file": tf_name,
                             "action": "fix_imports",
                             "details": "The test file has import/name errors. Read the source module and fix the imports."
                         })

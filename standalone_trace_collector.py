@@ -47,7 +47,7 @@ class TraceCollector:
         self.traces_dir.mkdir(parents=True, exist_ok=True)
 
         # Current session traces
-        self.traces = []
+        self.traces: list[dict] = []
 
         # Load existing traces if any
         self.traces_file = self.traces_dir / "failure_traces.jsonl"

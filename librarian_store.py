@@ -189,7 +189,7 @@ def add_journal_entry(
     outcome: str = "success",
     confidence: str = "medium",
     db_path: str = DEFAULT_DB_PATH,
-) -> int:
+) -> Optional[int]:
     """Add a strategic lesson to the journal."""
     conn = get_db(db_path)
     cursor = conn.execute("""
@@ -207,7 +207,7 @@ def add_journal_entry(
 
 def search_journal(
     query: str,
-    domain: str = None,
+    domain: Optional[str] = None,
     limit: int = 5,
     db_path: str = DEFAULT_DB_PATH,
 ) -> List[Dict]:
@@ -268,7 +268,7 @@ def add_snippet(
     session_id: str = "",
     quality_score: str = "good",
     db_path: str = DEFAULT_DB_PATH,
-) -> int:
+) -> Optional[int]:
     """Add a reusable code snippet."""
     conn = get_db(db_path)
     cursor = conn.execute("""
@@ -286,7 +286,7 @@ def add_snippet(
 
 def search_snippets(
     query: str,
-    domain: str = None,
+    domain: Optional[str] = None,
     limit: int = 3,
     db_path: str = DEFAULT_DB_PATH,
 ) -> List[Dict]:

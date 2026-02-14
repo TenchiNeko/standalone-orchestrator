@@ -3037,7 +3037,7 @@ Produce SEARCH/REPLACE edits to fix the failing tests.
             if preview_stripped:
                 content_lines = content.split('\n')
                 # Find most similar region using first line
-                best_sim = 0
+                best_sim: float = 0.0
                 best_idx = 0
                 for i, cl in enumerate(content_lines):
                     r = difflib.SequenceMatcher(None, preview_stripped[0], cl.strip()).ratio()
@@ -3323,7 +3323,7 @@ If a method takes args, call it with those args: `obj.method(arg1, arg2)`
         is_cli = not is_flask and any(kw in source_module.lower() for kw in ["cli", "main", "app"])
         # Build import line
         importable_names = [c['name'] for c in classes] + functions
-        import_line = f"from {source_module} import {', '.join(importable_names)}"
+        import_line = f"from {source_module} import {', '.join(str(n) for n in importable_names)}"
 
         # For Flask apps, import the app object — NOT route functions
         if is_flask:
@@ -4045,7 +4045,7 @@ Perform a 5 Whys analysis. What is the SPECIFIC root cause? What SPECIFIC change
                         for i, c in enumerate(state.dod.criteria)
                     ],
                 },
-                dod_results=test_report,
+                dod_results=test_report,  # type: ignore[arg-type]
             )
 
         # -- Step 2: v0.7.4 — Run ALL tests with proper isolation --
@@ -4121,7 +4121,7 @@ Perform a 5 Whys analysis. What is the SPECIFIC root cause? What SPECIFIC change
         # Inspired by SWE-bench: "tests pass" IS the verification — no separate DoD layer.
         individual_tests = {}  # {"test_create_project": True, "test_delete_task": False}
         for tf_name, tf_result in per_file_results.items():
-            output = tf_result.get("output", "")
+            output: str = str(tf_result.get("output", ""))
             # Parse pytest -v output: "test_app.py::test_create_project PASSED"
             for match in re_mod.finditer(r'(\w+::|^)(test_\w+)\s+(PASSED|FAILED|ERROR)', output, re_mod.MULTILINE):
                 func_name = match.group(2)
@@ -4146,7 +4146,7 @@ Perform a 5 Whys analysis. What is the SPECIFIC root cause? What SPECIFIC change
         #   4. Default: proportional to individual test results (NOT binary all-or-nothing)
         test_report = {}
         all_evidence = []
-        unmapped_criteria_indices = []  # Track criteria that don't match anything specific
+        unmapped_criteria_indices: list[int] = []  # Track criteria that don't match anything specific
 
         for idx, criterion in enumerate(state.dod.criteria):
             cid = f"criterion-{idx}"
@@ -4178,15 +4178,15 @@ Perform a 5 Whys analysis. What is the SPECIFIC root cause? What SPECIFIC change
                         break
                 if matched_file and matched_file in per_file_results:
                     file_result = per_file_results[matched_file]
-                    criterion.passed = file_result["passed"]
-                    criterion.evidence = file_result["output"][:500]
+                    criterion.passed = bool(file_result["passed"])
+                    criterion.evidence = str(file_result["output"])[:500]
                     test_report[cid] = {"passed": criterion.passed, "evidence": criterion.evidence, "command": f"pytest {matched_file}"}
                     if criterion.passed:
                         logger.info(f"DoD {cid} PASSED: {criterion.description[:60]}")
                         all_evidence.append(f"{cid}: PASSED -- {matched_file} tests pass")
                     else:
                         logger.warning(f"DoD {cid} FAILED: {criterion.description[:60]}")
-                        fail_tail = self._extract_test_error_tail(file_result['output'])
+                        fail_tail = self._extract_test_error_tail(str(file_result['output']))
                         all_evidence.append(f"{cid}: FAILED -- {matched_file}: {fail_tail}")
                     was_mapped = True
 
@@ -4290,6 +4290,7 @@ Perform a 5 Whys analysis. What is the SPECIFIC root cause? What SPECIFIC change
             passed_count = total_count
 
         # -- Step 4: Build structured test report with workspace info --
+        criteria_results: list[dict] = []
         structured_report = {
             "overall_passed": success,
             "passed_count": passed_count,
@@ -4300,12 +4301,12 @@ Perform a 5 Whys analysis. What is the SPECIFIC root cause? What SPECIFIC change
                 "valid_test_files": [f.name for f in valid_test_files],
                 "stale_test_files": [f.name for f in test_files if f not in valid_test_files],
             },
-            "criteria_results": [],
+            "criteria_results": criteria_results,
         }
         for idx, criterion in enumerate(state.dod.criteria):
             cid = f"criterion-{idx}"
-            report_entry = test_report.get(cid, {})
-            structured_report["criteria_results"].append({
+            report_entry: dict = test_report.get(cid, {})  # type: ignore[assignment]
+            criteria_results.append({
                 "criterion_id": cid,
                 "description": criterion.description,
                 "passed": criterion.passed,
@@ -4326,7 +4327,7 @@ Perform a 5 Whys analysis. What is the SPECIFIC root cause? What SPECIFIC change
             output=output,
             error=None if success else f"{passed_count}/{total_count} DoD criteria passed",
             test_report=structured_report,
-            dod_results=test_report,
+            dod_results=test_report,  # type: ignore[arg-type]
         )
 
     def _generate_post_build_commands(

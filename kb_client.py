@@ -43,7 +43,7 @@ class KBClient:
     def __init__(self, server_url: str = "http://localhost:8787", timeout: int = 5):
         self.server_url = server_url.rstrip("/")
         self.timeout = timeout
-        self._available = None  # lazy check
+        self._available: Optional[bool] = None  # lazy check
 
     def is_available(self) -> bool:
         """Check if KB server is reachable. Caches result for session."""
