@@ -1123,6 +1123,24 @@ class Orchestrator:
                 break
         return last_toplevel_import
 
+    @staticmethod
+    def _safe_write_python(filepath, new_content: str, original_content: str = None) -> bool:
+        """v1.1: Write Python file only if new content parses without SyntaxError.
+
+        If syntax check fails and original_content is provided, reverts to original.
+        Returns True if write succeeded, False if reverted.
+        """
+        import ast as _ast
+        try:
+            _ast.parse(new_content)
+        except SyntaxError as e:
+            logger.warning(f"    ⚠️ SYNTAX GUARD: blocked write to {filepath.name} — {e.msg} line {e.lineno}")
+            if original_content is not None:
+                filepath.write_text(original_content)
+            return False
+        filepath.write_text(new_content)
+        return True
+
     def _auto_fix_imports(self, filepath: Path, error_output: str) -> bool:
         """
         v0.7.0 Import Hygiene: Auto-fix common missing imports in test files.
@@ -1174,7 +1192,10 @@ class Orchestrator:
                         logger.info(f"    🔧 Auto-added: {import_line}")
 
             if fixed:
-                filepath.write_text(content)
+                # v1.1: Syntax-guarded write
+                if not self._safe_write_python(filepath, content):
+                    logger.warning(f"    ⚠️ Auto-import blocked — would create syntax error")
+                    return False
                 return True
 
         except Exception as e:
@@ -1245,7 +1266,10 @@ class Orchestrator:
                         logger.info(f"    🔧 Auto-added project import: {import_line}")
 
             if fixed:
-                filepath.write_text(content)
+                # v1.1: Syntax-guarded write
+                if not self._safe_write_python(filepath, content):
+                    logger.warning(f"    ⚠️ Project import blocked — would create syntax error")
+                    return False
                 return True
 
         except Exception as e:
@@ -1332,7 +1356,7 @@ class Orchestrator:
         """
         Classify test error output into a category for the pattern classifier.
 
-        These categories become features for the ML failure pattern model.
+        v1.1: Expanded from 17 to 25 categories.
         """
         error_lower = error_output.lower()
 
@@ -1346,6 +1370,8 @@ class Orchestrator:
             return "type_error"
         elif "assertionerror" in error_lower:
             return "assertion_error"
+        elif "indentationerror" in error_lower or "unexpected indent" in error_lower:
+            return "indentation_error"
         elif "syntaxerror" in error_lower:
             return "syntax_error"
         elif "filenotfounderror" in error_lower:
@@ -1356,6 +1382,16 @@ class Orchestrator:
             return "argparse_error"
         elif "working outside of" in error_lower and ("request context" in error_lower or "application context" in error_lower):
             return "flask_context_error"
+        elif "no fixture" in error_lower or "fixture" in error_lower and "not found" in error_lower:
+            return "fixture_error"
+        elif "recursionerror" in error_lower or "maximum recursion depth" in error_lower:
+            return "recursion_error"
+        elif "indexerror" in error_lower or "list index out of range" in error_lower:
+            return "index_error"
+        elif "zerodivisionerror" in error_lower:
+            return "zero_division"
+        elif "jwt" in error_lower and ("decode" in error_lower or "invalid" in error_lower or "expired" in error_lower):
+            return "jwt_error"
         elif "datetime" in error_lower:
             return "datetime_error"
         elif "permission" in error_lower:
@@ -1661,6 +1697,14 @@ class Orchestrator:
                     logger.info(f"    \u26a0\ufe0f Source candidate {idx+1}: smoke test TIMEOUT (threads may hang)")
                     collected_errors.append(f"Candidate {idx+1}: smoke test timed out — class instantiation hangs")
                     score = 2  # Downgrade: runtime hangs
+
+            # v1.1: Flask contract check — catch common pattern mistakes early
+            if score >= 2 and ('app' in filename.lower() or 'api' in filename.lower()):
+                flask_issues = self._check_flask_contracts(filepath)
+                if flask_issues:
+                    for issue in flask_issues:
+                        collected_errors.append(f"Candidate {idx+1}: Flask contract: {issue}")
+                    logger.info(f"    ⚠️ Source candidate {idx+1}: Flask contract issues: {flask_issues}")
 
             verification = self._verify_single_file(filename, False)
 
@@ -2499,7 +2543,10 @@ Use write_file to create {filename}.
         # Insert the missing imports
         import_block = '\n'.join(injected)
         lines.insert(insert_pos, import_block)
-        filepath.write_text('\n'.join(lines))
+        new_content = '\n'.join(lines)
+        # v1.1: Syntax guard — don't break files with bad injections
+        if not self._safe_write_python(filepath, new_content, source):
+            return []
 
         logger.info(f"    🔧 AUTO-IMPORT: injected {len(injected)} stdlib imports into {filepath.name}: {', '.join(injected)}")
         return injected
@@ -2769,10 +2816,11 @@ Use write_file to create {filename}.
                 insert_pos = self._find_safe_import_line(source)
                 import_block = '\n'.join(injected_imports)
                 lines.insert(insert_pos, import_block)
-                filepath.write_text('\n'.join(lines))
-                total_fixes += len(injected_imports)
-                logger.info(f"    🔧 AUTO-IMPORT: added {len(injected_imports)} project imports to {filename}: "
-                           f"{', '.join(injected_imports)}")
+                # v1.1: Syntax guard
+                if self._safe_write_python(filepath, '\n'.join(lines), source):
+                    total_fixes += len(injected_imports)
+                    logger.info(f"    🔧 AUTO-IMPORT: added {len(injected_imports)} project imports to {filename}: "
+                               f"{', '.join(injected_imports)}")
 
             # --- Phase 2c: Stdlib imports (delegate to existing method) ---
             stdlib_fixes = self._auto_fix_stdlib_imports(filepath)
@@ -2876,10 +2924,11 @@ Use write_file to create {filename}.
                     insert_pos = self._find_safe_import_line(source)
                     import_block = '\n'.join(final_imports)
                     lines.insert(insert_pos, import_block)
-                    filepath.write_text('\n'.join(lines))
-                    total_fixes += len(final_imports)
-                    logger.info(f"    🔧 THIRD-PARTY IMPORT: added {len(final_imports)} imports to {filename}: "
-                               f"{', '.join(final_imports)}")
+                    # v1.1: Syntax guard
+                    if self._safe_write_python(filepath, '\n'.join(lines), source):
+                        total_fixes += len(final_imports)
+                        logger.info(f"    🔧 THIRD-PARTY IMPORT: added {len(final_imports)} imports to {filename}: "
+                                   f"{', '.join(final_imports)}")
 
         return total_fixes
 
@@ -2892,6 +2941,56 @@ Use write_file to create {filename}.
     #
     # This is a deterministic text transform — no LLM needed.
     # ──────────────────────────────────────────────────────────────
+
+
+    def _check_flask_contracts(self, filepath) -> list:
+        """v1.1: Quick AST-based contract check for Flask app files.
+
+        Catches the most common Flask pattern mistakes that local models make:
+        - Missing create_app() factory function
+        - get_db as class method instead of closure
+        - Missing Flask imports
+
+        Returns list of issue strings (empty = all good).
+        """
+        import ast as _ast
+        try:
+            source = filepath.read_text()
+            tree = _ast.parse(source)
+        except (SyntaxError, OSError):
+            return []  # Can't check, don't block
+
+        issues = []
+        has_create_app = False
+        has_flask_import = False
+        has_get_db = False
+        has_teardown = False
+
+        for node in _ast.walk(tree):
+            if isinstance(node, _ast.ImportFrom) and node.module and 'flask' in node.module:
+                has_flask_import = True
+            if isinstance(node, _ast.FunctionDef):
+                if node.name == 'create_app':
+                    has_create_app = True
+                if node.name == 'get_db':
+                    has_get_db = True
+                if node.name == 'close_db':
+                    has_teardown = True
+
+        # Only check if this looks like a Flask app
+        if not has_flask_import and 'flask' not in source.lower():
+            return []  # Not a Flask file
+
+        if not has_create_app:
+            issues.append("Missing create_app() — Flask app factory pattern required")
+        if has_flask_import and not has_get_db:
+            # Only warn if there's database-related code
+            if any(kw in source.lower() for kw in ['database', 'sqlite', 'db', 'cursor']):
+                issues.append("Missing get_db() — database access needs Flask g-object pattern")
+        if has_get_db and not has_teardown:
+            issues.append("Missing close_db() / @app.teardown_appcontext — database connections will leak")
+
+        return issues
 
     def _fix_datetime_confusion(self, filenames: list) -> int:
         """
@@ -3238,6 +3337,22 @@ Use write_file to create {filename}.
 
                 logger.info(f"    🔧 Edit round {edit_round + 1}/3: {edit_passed} pass, {edit_failed} fail, {edit_errors} error")
 
+                # v1.1: Extract specific assertion errors for focused repair
+                # Research: Error-focused re-prompting ("line 45 asserts X, got Y")
+                # is much more effective than generic "fix failing tests"
+                import re as _re
+                error_specifics = []
+                for line in edit_output.split('\n'):
+                    # Capture assertion failures with values
+                    if 'AssertionError' in line or 'assert ' in line:
+                        error_specifics.append(line.strip()[:200])
+                    elif _re.search(r'(TypeError|ValueError|AttributeError|KeyError|NameError):', line):
+                        error_specifics.append(line.strip()[:200])
+                if error_specifics and not task_state.edit_feedback:
+                    task_state.edit_feedback = [
+                        "## Specific Errors to Fix\n" + "\n".join(f"- {e}" for e in error_specifics[:5])
+                    ]
+
                 # Ask model for surgical edits
                 edit_result = self.agent_runner.run_edit_repair(
                     state=task_state,
@@ -3260,9 +3375,12 @@ Use write_file to create {filename}.
                     # Fallback: try parsing as full file (model might have ignored edit format)
                     parsed = self.agent_runner.parse_plain_file_content(edit_result.output)
                     if parsed and len(parsed) > 100:
-                        filepath.write_text(parsed)
-                        logger.info(f"    🔄 Edit round {edit_round + 1}: model output full file instead of edits, using it")
-                        continue
+                        # v1.1: Syntax guard on full-file fallback
+                        if self._safe_write_python(filepath, parsed, current_content):
+                            logger.info(f"    🔄 Edit round {edit_round + 1}: model output full file instead of edits, using it")
+                            continue
+                        else:
+                            logger.info(f"    ⚠️ Edit round {edit_round + 1}: full file fallback had syntax error, skipped")
                     break
 
                 apply_result = self.agent_runner.apply_search_replace(filepath, edits)
@@ -4018,7 +4136,10 @@ Do NOT rewrite from scratch. Start from this code and fix the failing parts.
 
         import re
 
-        trivial_categories = {"name_error", "import_error", "syntax_error", "attribute_error", "flask_context_error"}
+        trivial_categories = {
+            "name_error", "import_error", "syntax_error", "attribute_error",
+            "flask_context_error", "indentation_error", "fixture_error",
+        }
         concrete_edits: List[Dict[str, str]] = []
         why_chain: List[str] = []
         found_any_trivial = False
@@ -4123,6 +4244,25 @@ Do NOT rewrite from scratch. Start from this code and fix the failing parts.
                             "Use setUp() to create self.client = app.test_client(). "
                             "Use self.client.post('/path', json={...}) for POST, "
                             "self.client.get('/path') for GET, self.client.delete('/path') for DELETE."
+                        )
+                    })
+                elif error_cat == "indentation_error":
+                    why_chain.append(f"{target_file}: IndentationError")
+                    concrete_edits.append({
+                        "file": target_file,
+                        "action": "fix_indentation",
+                        "details": "Fix indentation — ensure consistent 4-space indent throughout."
+                    })
+                elif error_cat == "fixture_error":
+                    why_chain.append(f"{target_file}: pytest fixture not found")
+                    concrete_edits.append({
+                        "file": target_file,
+                        "action": "fix_fixture",
+                        "details": (
+                            "Define ALL pytest fixtures inline in the test file. "
+                            "Never assume conftest.py exists. For Flask: add "
+                            "@pytest.fixture def client(): app = create_app({'TESTING': True}); "
+                            "return app.test_client()"
                         )
                     })
 

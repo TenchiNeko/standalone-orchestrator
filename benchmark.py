@@ -15,9 +15,10 @@ import os
 import subprocess
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 # ---------------------------------------------------------------------------
 # Benchmark task definitions (ordered by difficulty level)
@@ -160,11 +161,24 @@ def run_task(task_id: int, base_dir: str = "/tmp/bench", max_iterations: int = 3
             cwd=os.path.dirname(os.path.abspath(__file__))
         )
         output = proc.stdout + proc.stderr
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired as e:
         result.outcome = "timeout"
         result.error = f"Exceeded {timeout}s timeout"
         result.duration_seconds = timeout
         result.finished_at = datetime.now().isoformat()
+        # v1.1: Capture partial output for debugging (was lost before)
+        partial = (e.stdout or "") + (e.stderr or "") if hasattr(e, 'stdout') else ""
+        if partial:
+            log_file = f"{base_dir}/task{task_id}_{timestamp}.log"
+            Path(log_file).parent.mkdir(parents=True, exist_ok=True)
+            Path(log_file).write_text(f"=== TIMEOUT after {timeout}s ===\n{partial}")
+            result.log_file = log_file
+            print(f"\n  📋 Partial log saved to {log_file}")
+            # Show last 20 lines for quick debugging
+            last_lines = partial.strip().split('\n')[-20:]
+            print(f"  📋 Last output before timeout:")
+            for line in last_lines:
+                print(f"     {line}")
         return result
     except Exception as e:
         result.outcome = "crash"
@@ -208,6 +222,7 @@ def _parse_log(output: str, result: BenchmarkResult) -> BenchmarkResult:
         result.iterations = max(int(i) for i in iteration_matches)
 
     # DoD
+    dod_match = re.search(r"DoD final count: (\d+)/(\d+)", output)
     # Get the LAST DoD match (final iteration)
     dod_matches = re.findall(r"DoD final count: (\d+)/(\d+)", output)
     if dod_matches:

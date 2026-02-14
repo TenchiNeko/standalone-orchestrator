@@ -71,7 +71,8 @@ class KBClient:
             Empty string if KB unavailable or no relevant results.
         """
         if not self.is_available():
-            return ""
+            # v1.1: Fall back to local librarian store when KB server is down
+            return self._local_fallback(query, max_results)
 
         try:
             data = self._lookup(query)
@@ -238,6 +239,41 @@ class KBClient:
             return None
 
     # --- Internal helpers ---
+
+    def _local_fallback(self, query: str, max_results: int = 3) -> str:
+        """v1.1: Fall back to local librarian SQLite store when KB server is unavailable.
+
+        This ensures the build agent still gets past-session knowledge even
+        when the KB server isn't running (e.g., during benchmarks).
+        """
+        try:
+            from librarian_store import search_snippets, search_journal
+            from pathlib import Path
+
+            db_path = str(Path(__file__).parent / 'knowledge_base.db')
+            parts = []
+
+            # Get relevant journal entries
+            journal_hits = search_journal(query, limit=2, db_path=db_path)
+            if journal_hits:
+                for j in journal_hits:
+                    parts.append(f"- [{j['lesson_type'].upper()}] {j['content'][:200]}")
+
+            # Get relevant code snippets
+            snippet_hits = search_snippets(query, limit=max_results, db_path=db_path)
+            if snippet_hits:
+                for s in snippet_hits:
+                    parts.append(f"- {s['title']}: {s['description'][:150]}\n  ```python\n  {s['code'][:300]}\n  ```")
+
+            if parts:
+                result = "## Knowledge Base (local cache)\n" + "\n".join(parts) + "\n"
+                logger.debug(f"KB local fallback: {len(parts)} results for '{query[:50]}'")
+                return result
+        except Exception as e:
+            logger.debug(f"KB local fallback failed: {e}")
+
+        return ""
+
 
     def _lookup(self, query: str) -> Optional[Dict]:
         """Raw lookup against the KB server."""

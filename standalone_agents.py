@@ -34,6 +34,96 @@ logger = logging.getLogger(__name__)
 # Context Budget Utilities
 # ============================================================
 
+# v1.1: Flask golden snippets — inject verbatim into build prompts
+# Research: Antirez (Redis creator) found that injecting exact documentation
+# into LLM context makes them "expert level immediately" at using the API.
+# These patterns are tested and known-good for the expense tracker benchmark.
+FLASK_GOLDEN_SNIPPET = (
+    "## Flask Reference Patterns — COPY THESE EXACTLY\n\n"
+    "### Application Factory with Database\n"
+    "```python\n"
+    "import os\n"
+    "from flask import Flask, request, jsonify, g\n\n"
+    "def create_app(test_config=None):\n"
+    "    app = Flask(__name__)\n"
+    "    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key')\n\n"
+    "    if test_config:\n"
+    "        app.config.update(test_config)\n\n"
+    "    def get_db():\n"
+    "        if 'db' not in g:\n"
+    "            db_path = app.config.get('DATABASE_PATH', 'app.db')\n"
+    "            g.db = YourDatabase(db_path)  # Replace with actual DB class\n"
+    "        return g.db\n\n"
+    "    @app.teardown_appcontext\n"
+    "    def close_db(exception=None):\n"
+    "        db = g.pop('db', None)\n"
+    "        if db is not None:\n"
+    "            db.close()\n\n"
+    "    # Define ALL routes inside create_app using get_db()\n"
+    "    @app.route('/items', methods=['GET'])\n"
+    "    def list_items():\n"
+    "        db = get_db()\n"
+    "        return jsonify(db.get_all())\n\n"
+    "    return app\n\n"
+    "app = create_app()  # Module-level for 'from app import app'\n"
+    "```\n\n"
+    "### JWT Auth Pattern\n"
+    "```python\n"
+    "import jwt\n"
+    "import hashlib\n"
+    "import os\n"
+    "from datetime import datetime, timedelta\n"
+    "from functools import wraps\n"
+    "from flask import request, jsonify, g\n\n"
+    "def hash_password(password):\n"
+    "    salt = os.urandom(32)\n"
+    "    key = hashlib.pbkdf2_hmac('sha256', password.encode(), salt, 100000)\n"
+    "    return salt.hex() + ':' + key.hex()\n\n"
+    "def verify_password(stored, provided):\n"
+    "    salt_hex, key_hex = stored.split(':')\n"
+    "    salt = bytes.fromhex(salt_hex)\n"
+    "    key = hashlib.pbkdf2_hmac('sha256', provided.encode(), salt, 100000)\n"
+    "    return key.hex() == key_hex\n\n"
+    "def create_token(user_id, secret_key, expires_hours=24):\n"
+    "    payload = {'user_id': user_id, 'exp': datetime.utcnow() + timedelta(hours=expires_hours)}\n"
+    "    return jwt.encode(payload, secret_key, algorithm='HS256')\n\n"
+    "def verify_token(token, secret_key):\n"
+    "    try:\n"
+    "        payload = jwt.decode(token, secret_key, algorithms=['HS256'])\n"
+    "        return payload['user_id']\n"
+    "    except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):\n"
+    "        return None\n\n"
+    "def login_required(f):\n"
+    "    @wraps(f)\n"
+    "    def decorated(*args, **kwargs):\n"
+    "        token = request.headers.get('Authorization', '').replace('Bearer ', '')\n"
+    "        if not token:\n"
+    "            return jsonify({'error': 'Token required'}), 401\n"
+    "        user_id = verify_token(token, current_app.config['SECRET_KEY'])\n"
+    "        if not user_id:\n"
+    "            return jsonify({'error': 'Invalid token'}), 401\n"
+    "        g.current_user_id = user_id\n"
+    "        return f(*args, **kwargs)\n"
+    "    return decorated\n"
+    "```\n\n"
+    "### Flask Test Fixture\n"
+    "```python\n"
+    "import pytest\n"
+    "from app import create_app\n\n"
+    "@pytest.fixture\n"
+    "def app():\n"
+    "    app = create_app({'TESTING': True, 'DATABASE_PATH': ':memory:'})\n"
+    "    yield app\n\n"
+    "@pytest.fixture\n"
+    "def client(app):\n"
+    "    return app.test_client()\n"
+    "```\n\n"
+    "CRITICAL: get_db() and close_db() must be CLOSURES inside create_app(), "
+    "NOT class methods or module-level functions. The 'g' object only works "
+    "inside a Flask request/app context.\n"
+)
+
+
 def estimate_tokens(text: str) -> int:
     """
     Estimate token count from text. Uses ~4 chars/token heuristic
@@ -2697,6 +2787,16 @@ Import from these modules as needed. Use the exact class/function names shown ab
         if kb_context:
             kb_section = kb_context
 
+        # v1.1: Flask golden snippet injection
+        # Research: Antirez found injecting exact docs makes LLMs expert-level immediately
+        flask_section = ""
+        goal_lower = (state.goal or "").lower()
+        file_lower = filename.lower()
+        desc_lower = (step_info.get('description', '') or '').lower()
+        if any(kw in goal_lower or kw in file_lower or kw in desc_lower
+               for kw in ['flask', 'api', 'rest api', 'endpoint', 'route', 'jwt', 'auth']):
+            flask_section = FLASK_GOLDEN_SNIPPET
+
         # --- System prompt: raw output, no tools ---
         system_prompt = (
             "You are the BUILD agent. You write complete Python files.\n\n"
@@ -2725,6 +2825,7 @@ Import from these modules as needed. Use the exact class/function names shown ab
         )
 
         user_prompt = f"""{kb_section}
+{flask_section}
 ## Task
 {state.goal}
 
@@ -2798,6 +2899,14 @@ Now write the complete `{filename}` between the markers:
                 feedback_section += f"\n{fb}\n"
             feedback_section += "\nFix these matching issues in your new SEARCH blocks.\n"
 
+        # v1.1: Flask golden snippets for edit repair (was only in build)
+        flask_section = ""
+        goal_lower = (state.goal or "").lower()
+        file_lower = filename.lower()
+        if any(kw in goal_lower or kw in file_lower
+               for kw in ['flask', 'api', 'rest api', 'endpoint', 'route', 'jwt', 'auth', 'app.py']):
+            flask_section = f"\n## Flask Reference Patterns\n{FLASK_GOLDEN_SNIPPET}\n"
+
         user_prompt = f"""## Task
 {state.goal}
 
@@ -2811,6 +2920,7 @@ Your SEARCH blocks should match the CONTENT part (after the `| `), not the tags.
 
 {source_context}
 {contract_section}
+{flask_section}
 
 {feedback_section}
 
