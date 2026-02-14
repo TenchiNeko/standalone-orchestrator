@@ -12,7 +12,7 @@ import uuid
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set
 
 from standalone_config import Config
 from standalone_session import SessionManager
