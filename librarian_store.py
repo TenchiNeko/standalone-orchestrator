@@ -424,3 +424,273 @@ def get_librarian_stats(db_path: str = DEFAULT_DB_PATH) -> Dict:
 if __name__ == "__main__":
     init_librarian_tables()
     print(json.dumps(get_librarian_stats(), indent=2))
+
+
+# ── v1.2: AST-Aware Code Chunking ────────────────────────────
+# Replaces naive text chunking with semantically coherent units
+# based on function/class boundaries. cAST approach (CMU + Augment Code):
+# improves Recall@5 by 4.3 points on RepoEval.
+
+def chunk_python_ast(
+    source: str,
+    filename: str = "",
+    max_chunk_lines: int = 80,
+    min_chunk_lines: int = 5,
+) -> List[Dict]:
+    """
+    Parse Python source into AST-aware chunks.
+
+    Each chunk is a self-contained code unit (function, class, or module-level block)
+    with metadata for better retrieval. Siblings under max_chunk_lines are merged.
+
+    Returns:
+        List of dicts with keys: name, type, signature, code, imports, docstring, line_start, line_end
+    """
+    import ast as _ast
+
+    chunks = []
+    try:
+        tree = _ast.parse(source)
+    except SyntaxError:
+        # Fallback: return entire file as single chunk
+        if len(source.strip()) > 0:
+            chunks.append({
+                "name": filename or "unknown",
+                "type": "file",
+                "signature": "",
+                "code": source[:2000],
+                "imports": [],
+                "docstring": "",
+                "line_start": 1,
+                "line_end": source.count('\n') + 1,
+            })
+        return chunks
+
+    lines = source.split('\n')
+
+    # Collect module-level imports
+    module_imports = []
+    for node in _ast.iter_child_nodes(tree):
+        if isinstance(node, _ast.Import):
+            for alias in node.names:
+                module_imports.append(f"import {alias.name}")
+        elif isinstance(node, _ast.ImportFrom):
+            names = ", ".join(a.name for a in node.names)
+            module_imports.append(f"from {node.module or ''} import {names}")
+
+    # Process top-level definitions
+    pending_lines = []  # Module-level code between definitions
+    pending_start = 1
+
+    for node in _ast.iter_child_nodes(tree):
+        if isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
+            # Flush pending module-level code
+            if pending_lines:
+                code = '\n'.join(pending_lines).strip()
+                if len(code) > 20:
+                    chunks.append({
+                        "name": f"{filename}:module",
+                        "type": "module_code",
+                        "signature": "",
+                        "code": code[:1500],
+                        "imports": module_imports,
+                        "docstring": "",
+                        "line_start": pending_start,
+                        "line_end": node.lineno - 1,
+                    })
+                pending_lines = []
+
+            # Extract function signature
+            args = []
+            for arg in node.args.args:
+                arg_name = arg.arg
+                if arg.annotation:
+                    try:
+                        arg_name += f": {_ast.unparse(arg.annotation)}"
+                    except Exception:
+                        pass
+                args.append(arg_name)
+
+            returns = ""
+            if node.returns:
+                try:
+                    returns = f" -> {_ast.unparse(node.returns)}"
+                except Exception:
+                    pass
+
+            sig = f"def {node.name}({', '.join(args)}){returns}"
+
+            # Extract docstring
+            docstring = ""
+            if (node.body and isinstance(node.body[0], _ast.Expr)
+                    and isinstance(node.body[0].value, (_ast.Constant, _ast.Str))):
+                docstring = str(getattr(node.body[0].value, 'value', getattr(node.body[0].value, 's', '')))
+
+            end_line = node.end_lineno or node.lineno + len(node.body)
+            code = '\n'.join(lines[node.lineno - 1:end_line])
+
+            chunks.append({
+                "name": node.name,
+                "type": "async_function" if isinstance(node, _ast.AsyncFunctionDef) else "function",
+                "signature": sig,
+                "code": code[:2000],
+                "imports": module_imports,
+                "docstring": docstring[:300],
+                "line_start": node.lineno,
+                "line_end": end_line,
+            })
+
+            pending_start = end_line + 1
+
+        elif isinstance(node, _ast.ClassDef):
+            if pending_lines:
+                code = '\n'.join(pending_lines).strip()
+                if len(code) > 20:
+                    chunks.append({
+                        "name": f"{filename}:module",
+                        "type": "module_code",
+                        "signature": "",
+                        "code": code[:1500],
+                        "imports": module_imports,
+                        "docstring": "",
+                        "line_start": pending_start,
+                        "line_end": node.lineno - 1,
+                    })
+                pending_lines = []
+
+            # Class with all methods
+            bases = []
+            for base in node.bases:
+                try:
+                    bases.append(_ast.unparse(base))
+                except Exception:
+                    bases.append("?")
+            sig = f"class {node.name}({', '.join(bases)})" if bases else f"class {node.name}"
+
+            docstring = ""
+            if (node.body and isinstance(node.body[0], _ast.Expr)
+                    and isinstance(node.body[0].value, (_ast.Constant, _ast.Str))):
+                docstring = str(getattr(node.body[0].value, 'value', getattr(node.body[0].value, 's', '')))
+
+            # Method signatures for class summary
+            methods = []
+            for item in node.body:
+                if isinstance(item, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
+                    m_args = [a.arg for a in item.args.args if a.arg != 'self']
+                    methods.append(f"{item.name}({', '.join(m_args)})")
+
+            end_line = node.end_lineno or node.lineno + len(node.body)
+            code = '\n'.join(lines[node.lineno - 1:end_line])
+
+            # If class is very large, chunk it into methods
+            if end_line - node.lineno > max_chunk_lines:
+                # Add class header chunk
+                header_end = min(node.lineno + 5, end_line)
+                chunks.append({
+                    "name": node.name,
+                    "type": "class",
+                    "signature": sig,
+                    "code": '\n'.join(lines[node.lineno - 1:header_end]),
+                    "imports": module_imports,
+                    "docstring": docstring[:300],
+                    "line_start": node.lineno,
+                    "line_end": header_end,
+                    "methods": methods,
+                })
+                # Add individual methods as separate chunks
+                for item in node.body:
+                    if isinstance(item, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
+                        m_end = item.end_lineno or item.lineno + len(item.body)
+                        m_code = '\n'.join(lines[item.lineno - 1:m_end])
+                        m_args = [a.arg for a in item.args.args if a.arg != 'self']
+                        chunks.append({
+                            "name": f"{node.name}.{item.name}",
+                            "type": "method",
+                            "signature": f"{node.name}.{item.name}({', '.join(m_args)})",
+                            "code": m_code[:2000],
+                            "imports": [],
+                            "docstring": "",
+                            "line_start": item.lineno,
+                            "line_end": m_end,
+                        })
+            else:
+                chunks.append({
+                    "name": node.name,
+                    "type": "class",
+                    "signature": sig,
+                    "code": code[:2000],
+                    "imports": module_imports,
+                    "docstring": docstring[:300],
+                    "line_start": node.lineno,
+                    "line_end": end_line,
+                    "methods": methods,
+                })
+
+            pending_start = end_line + 1
+
+        else:
+            # Module-level code
+            if hasattr(node, 'lineno'):
+                end = getattr(node, 'end_lineno', node.lineno)
+                pending_lines.extend(lines[node.lineno - 1:end])
+
+    # Merge small sibling MODULE-LEVEL chunks only (cAST approach)
+    # Functions and classes are kept separate for precise retrieval
+    merged = []
+    buffer = None
+    for chunk in chunks:
+        chunk_lines = chunk.get("line_end", 0) - chunk.get("line_start", 0) + 1
+        # Only merge module_code chunks — keep functions/classes/methods separate
+        if chunk["type"] == "module_code" and chunk_lines < min_chunk_lines:
+            if buffer is not None and buffer["type"] == "module_code":
+                buffer_lines = buffer.get("line_end", 0) - buffer.get("line_start", 0) + 1
+                if buffer_lines + chunk_lines <= max_chunk_lines:
+                    buffer["name"] += f" + {chunk['name']}"
+                    buffer["code"] += f"\n\n{chunk['code']}"
+                    buffer["line_end"] = chunk["line_end"]
+                    continue
+                else:
+                    merged.append(buffer)
+                    buffer = chunk
+                    continue
+            buffer = chunk
+        else:
+            if buffer:
+                merged.append(buffer)
+                buffer = None
+            merged.append(chunk)
+
+    if buffer:
+        merged.append(buffer)
+
+    return merged
+
+
+def add_ast_chunks(
+    source: str,
+    filename: str,
+    domain: str = "general",
+    session_id: str = "",
+    db_path: str = DEFAULT_DB_PATH,
+) -> int:
+    """
+    Parse a Python file and store AST-aware chunks as snippets.
+
+    Returns number of chunks stored.
+    """
+    chunks = chunk_python_ast(source, filename)
+    count = 0
+    for chunk in chunks:
+        tags = f"{chunk['type']},{chunk.get('signature', '')}"
+        add_snippet(
+            title=f"{filename}:{chunk['name']}",
+            description=f"{chunk['type']}: {chunk.get('signature', chunk['name'])}. {chunk.get('docstring', '')}",
+            code=chunk['code'],
+            domain=domain,
+            tags=tags[:200],
+            source_file=filename,
+            session_id=session_id,
+            db_path=db_path,
+        )
+        count += 1
+    return count

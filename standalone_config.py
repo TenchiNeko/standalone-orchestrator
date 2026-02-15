@@ -33,6 +33,15 @@ class ModelConfig:
     native_tool_calling: bool = False  # True = model returns structured tool_calls natively (Qwen3, Llama 3.3)
     tool_call_style: str = "text"  # "text" = parse from content, "native" = use Ollama tool_calls field
 
+    # v1.2: Inference optimization fields
+    repeat_penalty: float = 1.0  # 1.0=disabled. Qwen-Next is very sensitive to penalties (Stepfunction/r/LocalLLaMA)
+    thinking_mode: str = "auto"  # "enabled"=always /think, "disabled"=always /no_think, "auto"=per-agent
+    thinking_budget: int = 0  # max thinking tokens (0=unlimited). Qwen3 native budget control
+    num_keep: int = -1  # tokens to keep from initial prompt for KV cache (-1=auto)
+    top_p: float = 0.95  # nucleus sampling (Qwen recommended)
+    min_p: float = 0.0  # min-p sampling (0=disabled)
+    draft_model: Optional[str] = None  # speculative decoding draft model (Ollama server-side config)
+
 
 @dataclass
 class AgentConfig:
@@ -108,6 +117,11 @@ def default_config() -> Config:
         max_tokens=16384,
         context_window=131072,  # 128K context
         supports_tools=True,
+        # v1.2: Inference optimizations
+        repeat_penalty=1.0,  # DISABLED — Qwen-Next very sensitive (Stepfunction/r/LocalLLaMA)
+        thinking_mode="auto",  # Per-agent: enabled for plan/build, disabled for fast tasks
+        thinking_budget=0,  # 0=unlimited thinking for heavy reasoning
+        top_p=0.95,
     )
 
     # SECONDARY (Instance 2, port 11436): Qwen 2.5 Coder 14B — fast agent work
@@ -121,6 +135,9 @@ def default_config() -> Config:
         max_tokens=16384,
         context_window=32768,  # 32K context
         supports_tools=True,
+        # v1.2: Inference optimizations
+        repeat_penalty=1.0,  # DISABLED for Qwen family
+        thinking_mode="disabled",  # Fast agent — no extended reasoning
     )
 
     qwen_14b_testgen = ModelConfig(
@@ -132,6 +149,9 @@ def default_config() -> Config:
         max_tokens=16384,
         context_window=32768,
         supports_tools=True,
+        # v1.2: Inference optimizations
+        repeat_penalty=1.0,
+        thinking_mode="disabled",  # Test gen doesn't need extended reasoning
     )
 
     # FALLBACK: PVE Node 7B (if GPU 0 is reclaimed for 70B)
@@ -267,5 +287,16 @@ def load_config(config_path: Optional[Path] = None) -> Config:
                         agent.max_tool_rounds = ao["max_tool_rounds"]
                     if "context_window" in ao:
                         agent.model.context_window = ao["context_window"]
+                    # v1.2: Inference optimization overrides
+                    if "repeat_penalty" in ao:
+                        agent.model.repeat_penalty = ao["repeat_penalty"]
+                    if "thinking_mode" in ao:
+                        agent.model.thinking_mode = ao["thinking_mode"]
+                    if "thinking_budget" in ao:
+                        agent.model.thinking_budget = ao["thinking_budget"]
+                    if "top_p" in ao:
+                        agent.model.top_p = ao["top_p"]
+                    if "min_p" in ao:
+                        agent.model.min_p = ao["min_p"]
 
     return config

@@ -442,6 +442,41 @@ RCA_OUTPUT_SCHEMA = {
     "required": ["root_cause", "why_chain", "what_to_change", "concrete_edits", "needs_re_exploration", "severity"]
 }
 
+# v1.2: Structured output schema for edit repair — grammar-constrained generation
+# Guarantees 100% well-formed output (vs 15-20% malformation with free-text parsing)
+EDIT_REPAIR_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "edits": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "search": {
+                        "type": "string",
+                        "description": "Exact lines from the current file to find and replace. Include 2-3 context lines."
+                    },
+                    "replace": {
+                        "type": "string",
+                        "description": "The corrected replacement lines."
+                    },
+                    "reason": {
+                        "type": "string",
+                        "description": "Brief explanation of what this edit fixes."
+                    }
+                },
+                "required": ["search", "replace"]
+            },
+            "description": "List of search/replace edits to apply surgically."
+        },
+        "analysis": {
+            "type": "string",
+            "description": "Brief analysis of root cause of the failing tests."
+        }
+    },
+    "required": ["edits"]
+}
+
 TOOL_DEFINITIONS = [
     {
         "type": "function",
@@ -1089,8 +1124,15 @@ class LLMClient:
                 "temperature": temperature if temperature is not None else self.config.temperature,
                 "num_predict": self.config.max_tokens,
                 "num_ctx": self.config.context_window,  # v1.1c: was missing — Ollama defaulted to 2048
+                "repeat_penalty": self.config.repeat_penalty,  # v1.2: disabled for Qwen-Next (default 1.0)
+                "top_p": self.config.top_p,  # v1.2: nucleus sampling
             }
         }
+        # v1.2: Conditionally add optional parameters
+        if self.config.min_p > 0:
+            payload["options"]["min_p"] = self.config.min_p
+        if self.config.num_keep >= 0:
+            payload["options"]["num_keep"] = self.config.num_keep
 
         try:
             resp = self.session.post(url, json=payload, timeout=900)  # v0.9.9c: 600→900 (edit repair on large files)
@@ -1130,8 +1172,15 @@ class LLMClient:
                 "temperature": temperature if temperature is not None else self.config.temperature,
                 "num_predict": self.config.max_tokens,
                 "num_ctx": self.config.context_window,  # v1.1c: was missing — Ollama defaulted to 2048
+                "repeat_penalty": self.config.repeat_penalty,  # v1.2: disabled for Qwen-Next (default 1.0)
+                "top_p": self.config.top_p,  # v1.2: nucleus sampling
             }
         }
+        # v1.2: Conditionally add optional parameters
+        if self.config.min_p > 0:
+            payload["options"]["min_p"] = self.config.min_p
+        if self.config.num_keep >= 0:
+            payload["options"]["num_keep"] = self.config.num_keep
 
         if tools and self.config.supports_tools:
             payload["tools"] = tools
@@ -1336,6 +1385,29 @@ class AgentRunner:
             if playbook_context:
                 system_prompt = system_prompt + "\n\n" + playbook_context
                 logger.debug(f"Playbook injected for {agent_config.role}: {len(playbook_context)} chars")
+
+            # v1.2: Thinking mode injection (Qwen3 /think and /no_think commands)
+            # Heavy agents (plan, build, edit_repair) get extended reasoning
+            # Light agents (init, explore, test) get fast mode
+            thinking_mode = agent_config.model.thinking_mode
+            if thinking_mode == "auto":
+                # Map agent roles to thinking behavior
+                heavy_roles = {"plan", "build"}
+                if agent_config.role in heavy_roles:
+                    thinking_mode = "enabled"
+                else:
+                    thinking_mode = "disabled"
+
+            if thinking_mode == "enabled":
+                system_prompt = "/think\n" + system_prompt
+                # Add thinking budget if configured
+                if agent_config.model.thinking_budget > 0:
+                    system_prompt += f"\n\n<thinking_budget>{agent_config.model.thinking_budget}</thinking_budget>"
+                logger.debug(f"  Thinking mode: ENABLED for {agent_config.role}")
+            elif thinking_mode == "disabled":
+                system_prompt = "/no_think\n" + system_prompt
+                logger.debug(f"  Thinking mode: DISABLED for {agent_config.role}")
+
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": user_prompt})
 
@@ -2945,6 +3017,104 @@ Produce SEARCH/REPLACE edits to fix the failing tests.
             agent_config, system_prompt, user_prompt,
             tools=None, temperature=temperature
         )
+
+    def run_edit_repair_structured(
+        self,
+        state: TaskState,
+        filename: str,
+        current_content: str,
+        test_output: str,
+        source_context: str = "",
+        contract_section: str = "",
+        temperature: float = 0.2,
+    ) -> Optional[list]:
+        """
+        v1.2: Structured edit repair using grammar-constrained JSON output.
+
+        Instead of free-text SEARCH/REPLACE blocks that need regex parsing,
+        this uses Ollama's structured output (format=schema) to guarantee
+        100% well-formed JSON edit blocks. Falls through to None if the
+        model or provider doesn't support structured output.
+
+        Returns:
+            List of (search, replace) tuples, or None if structured output unavailable.
+        """
+        agent_config = self.config.get_agent("build")
+        client = self._get_llm_client(agent_config.model)
+
+        if agent_config.model.provider != "ollama":
+            return None
+
+        tagged_content = self.hashline_tag(current_content)
+
+        feedback_section = ""
+        if state.edit_feedback:
+            feedback_section = "## Previous Edit Failures\n"
+            for fb in state.edit_feedback[-3:]:
+                feedback_section += f"\n{fb}\n"
+
+        flask_section = ""
+        goal_lower = (state.goal or "").lower()
+        file_lower = filename.lower()
+        if any(kw in goal_lower or kw in file_lower
+               for kw in ['flask', 'api', 'rest api', 'endpoint', 'route', 'jwt', 'auth', 'app.py']):
+            flask_section = f"\n## Flask Reference Patterns\n{FLASK_GOLDEN_SNIPPET}\n"
+
+        messages = [
+            {"role": "system", "content": (
+                "/think\n"  # Enable thinking for repair reasoning
+                "You are the REPAIR agent. Fix specific bugs in code using surgical edits.\n"
+                "Analyze the test failures and produce targeted search/replace edits.\n"
+                "SEARCH text must match the actual file content exactly.\n"
+                "Include 2-3 context lines to make matches unique.\n"
+                "Fix ONLY failing tests. Do NOT modify passing code.\n"
+                "Do NOT rewrite the entire file — minimal, surgical changes only."
+            )},
+            {"role": "user", "content": f"""## Task
+{state.goal}
+
+## Current File: `{filename}` (with line:hash tags)
+```
+{tagged_content}
+```
+
+{source_context}
+{contract_section}
+{flask_section}
+{feedback_section}
+
+## Test Failures to Fix
+```
+{test_output[-2000:]}
+```
+
+Produce JSON with your edits. Each edit has "search" (exact lines from file) and "replace" (corrected lines).
+"""}
+        ]
+
+        try:
+            result = client.chat_structured(messages, schema=EDIT_REPAIR_SCHEMA, temperature=temperature)
+            if not result or "edits" not in result:
+                logger.debug("Structured edit repair returned no edits")
+                return None
+
+            edits = []
+            for edit in result["edits"]:
+                search = edit.get("search", "").strip()
+                replace = edit.get("replace", "").strip()
+                if search:  # Allow empty replace (deletion)
+                    edits.append((search, replace))
+                    reason = edit.get("reason", "")
+                    if reason:
+                        logger.debug(f"  Structured edit: {reason[:80]}")
+
+            if edits:
+                logger.info(f"  📐 Structured repair: {len(edits)} edit(s) from JSON schema")
+            return edits if edits else None
+
+        except Exception as e:
+            logger.debug(f"Structured edit repair failed: {e}")
+            return None
 
     @staticmethod
     def parse_search_replace(model_output: str) -> list:

@@ -29,7 +29,7 @@ except ImportError:
     _HAS_PLAYBOOK = False
 from kb_client import KBClient
 from librarian import Librarian, build_session_summary
-from librarian_store import init_librarian_tables, get_librarian_stats, get_session_context
+from librarian_store import init_librarian_tables, get_librarian_stats, get_session_context, add_ast_chunks
 
 logger = logging.getLogger(__name__)
 
@@ -1732,7 +1732,8 @@ class Orchestrator:
                 # Identify what's wrong
                 error_summary = "\n".join(collected_errors[:2])
 
-                edit_result = self.agent_runner.run_edit_repair(
+                # v1.2: Try structured JSON output first (grammar-constrained, 100% well-formed)
+                edits = self.agent_runner.run_edit_repair_structured(
                     state=task_state,
                     filename=filename,
                     current_content=current_content,
@@ -1740,61 +1741,73 @@ class Orchestrator:
                     temperature=0.2,
                 )
 
-                if edit_result.success and edit_result.output:
-                    edits = self.agent_runner.parse_search_replace(edit_result.output)
-                    if edits:
-                        apply_result = self.agent_runner.apply_search_replace(filepath, edits)
-                        if isinstance(apply_result, tuple):
-                            num_applied, edit_feedback = apply_result
-                        else:
-                            num_applied, edit_feedback = apply_result, []
-                        logger.info(f"    📝 Source edit {edit_round + 1}: applied {num_applied}/{len(edits)} edits")
+                # Fall back to text-based repair if structured unavailable
+                if edits is None:
+                    edit_result = self.agent_runner.run_edit_repair(
+                        state=task_state,
+                        filename=filename,
+                        current_content=current_content,
+                        test_output=error_summary,
+                        temperature=0.2,
+                    )
+                    if edit_result.success and edit_result.output:
+                        edits = self.agent_runner.parse_search_replace(edit_result.output)
 
-                        if num_applied == 0:
-                            # v0.9.9b: store feedback for next round (was discarded)
-                            if edit_feedback:
-                                task_state.edit_feedback.extend(edit_feedback)
-                                logger.info(f"    🔍 Source edit {edit_round + 1}: {len(edit_feedback)} match failures logged")
-                                continue
-                            break
+                if not edits:
+                    break  # Both paths failed or produced no edits
 
-                        # Clear feedback on success
-                        task_state.edit_feedback = []
+                apply_result = self.agent_runner.apply_search_replace(filepath, edits)
+                if isinstance(apply_result, tuple):
+                    num_applied, edit_feedback = apply_result
+                else:
+                    num_applied, edit_feedback = apply_result, []
+                logger.info(f"    📝 Source edit {edit_round + 1}: applied {num_applied}/{len(edits)} edits")
 
-                        if num_applied > 0:
-                            self._auto_fix_imports_precheck(filepath)
-                            # Re-verify
-                            import_ok = self._safe_run(
-                                ["python3", "-c", f"import {module_name}"],
-                                capture_output=True, text=True, timeout=10,
-                                cwd=str(self.working_dir)
-                            ).returncode == 0
+                if num_applied == 0:
+                    # v0.9.9b: store feedback for next round (was discarded)
+                    if edit_feedback:
+                        task_state.edit_feedback.extend(edit_feedback)
+                        logger.info(f"    🔍 Source edit {edit_round + 1}: {len(edit_feedback)} match failures logged")
+                        continue
+                    break
 
-                            export_ok = False
-                            if import_ok:
-                                export_ok = self._safe_run(
-                                    ["python3", "-c", f"from {module_name} import *; print('OK')"],
-                                    capture_output=True, text=True, timeout=10,
-                                    cwd=str(self.working_dir)
-                                ).returncode == 0
+                # Clear feedback on success
+                task_state.edit_feedback = []
 
-                            # v0.9.9b: actually check compile (was hardcoded True)
-                            compile_ok = self._safe_run(
-                                ["python3", "-c", f"import py_compile; py_compile.compile('{filepath}', doraise=True)"],
-                                capture_output=True, text=True, timeout=10,
-                                cwd=str(self.working_dir)
-                            ).returncode == 0
+                if num_applied > 0:
+                    self._auto_fix_imports_precheck(filepath)
+                    # Re-verify
+                    import_ok = self._safe_run(
+                        ["python3", "-c", f"import {module_name}"],
+                        capture_output=True, text=True, timeout=10,
+                        cwd=str(self.working_dir)
+                    ).returncode == 0
 
-                            new_score = (1 if compile_ok else 0) + (1 if import_ok else 0) + (1 if export_ok else 0)
-                            if new_score > best_score:
-                                best_score = new_score
-                                best_content = filepath.read_text()
-                                best_verification = self._verify_single_file(filename, False)
-                                logger.info(f"    ✅ Source edit improved: score {new_score}/3")
+                    export_ok = False
+                    if import_ok:
+                        export_ok = self._safe_run(
+                            ["python3", "-c", f"from {module_name} import *; print('OK')"],
+                            capture_output=True, text=True, timeout=10,
+                            cwd=str(self.working_dir)
+                        ).returncode == 0
 
-                            if new_score >= 2:
-                                best_verification["status"] = "OK"
-                                return AgentResult(success=True, output=f"Source edit repair: score {new_score}/3"), best_verification
+                    # v0.9.9b: actually check compile (was hardcoded True)
+                    compile_ok = self._safe_run(
+                        ["python3", "-c", f"import py_compile; py_compile.compile('{filepath}', doraise=True)"],
+                        capture_output=True, text=True, timeout=10,
+                        cwd=str(self.working_dir)
+                    ).returncode == 0
+
+                    new_score = (1 if compile_ok else 0) + (1 if import_ok else 0) + (1 if export_ok else 0)
+                    if new_score > best_score:
+                        best_score = new_score
+                        best_content = filepath.read_text()
+                        best_verification = self._verify_single_file(filename, False)
+                        logger.info(f"    ✅ Source edit improved: score {new_score}/3")
+
+                    if new_score >= 2:
+                        best_verification["status"] = "OK"
+                        return AgentResult(success=True, output=f"Source edit repair: score {new_score}/3"), best_verification
 
             filepath.write_text(best_content)  # Restore best version
 
@@ -3360,34 +3373,49 @@ Use write_file to create {filename}.
                         "## Specific Errors to Fix\n" + "\n".join(f"- {e}" for e in error_specifics[:5])
                     ]
 
-                # Ask model for surgical edits
-                edit_result = self.agent_runner.run_edit_repair(
+                # v1.2: Try structured JSON output first (grammar-constrained, no parsing needed)
+                temp = 0.2 + (edit_round * 0.15)  # Slightly increase temp each round
+                edits = self.agent_runner.run_edit_repair_structured(
                     state=task_state,
                     filename=filename,
                     current_content=current_content,
                     test_output=edit_output,
                     source_context=repair_source_ctx,
                     contract_section=repair_contract,
-                    temperature=0.2 + (edit_round * 0.15),  # Slightly increase temp each round
+                    temperature=temp,
                 )
 
-                if not edit_result.success or not edit_result.output:
-                    logger.info(f"    ❌ Edit round {edit_round + 1}: model produced no output")
-                    break
+                edit_result = None
+                # Fall back to text-based repair if structured unavailable
+                if edits is None:
+                    edit_result = self.agent_runner.run_edit_repair(
+                        state=task_state,
+                        filename=filename,
+                        current_content=current_content,
+                        test_output=edit_output,
+                        source_context=repair_source_ctx,
+                        contract_section=repair_contract,
+                        temperature=temp,
+                    )
 
-                # Parse and apply edits
-                edits = self.agent_runner.parse_search_replace(edit_result.output)
+                    if not edit_result.success or not edit_result.output:
+                        logger.info(f"    ❌ Edit round {edit_round + 1}: model produced no output")
+                        break
+
+                    edits = self.agent_runner.parse_search_replace(edit_result.output)
+
                 if not edits:
                     logger.info(f"    ❌ Edit round {edit_round + 1}: no SEARCH/REPLACE blocks found")
                     # Fallback: try parsing as full file (model might have ignored edit format)
-                    parsed = self.agent_runner.parse_plain_file_content(edit_result.output)
-                    if parsed and len(parsed) > 100:
-                        # v1.1: Syntax guard on full-file fallback
-                        if self._safe_write_python(filepath, parsed, current_content):
-                            logger.info(f"    🔄 Edit round {edit_round + 1}: model output full file instead of edits, using it")
-                            continue
-                        else:
-                            logger.info(f"    ⚠️ Edit round {edit_round + 1}: full file fallback had syntax error, skipped")
+                    if edit_result and edit_result.output:
+                        parsed = self.agent_runner.parse_plain_file_content(edit_result.output)
+                        if parsed and len(parsed) > 100:
+                            # v1.1: Syntax guard on full-file fallback
+                            if self._safe_write_python(filepath, parsed, current_content):
+                                logger.info(f"    🔄 Edit round {edit_round + 1}: model output full file instead of edits, using it")
+                                continue
+                            else:
+                                logger.info(f"    ⚠️ Edit round {edit_round + 1}: full file fallback had syntax error, skipped")
                     break
 
                 apply_result = self.agent_runner.apply_search_replace(filepath, edits)
@@ -3929,6 +3957,24 @@ Do NOT rewrite from scratch. Start from this code and fix the failing parts.
 
         return rca
 
+    @staticmethod
+    def _detect_domain(goal: str) -> str:
+        """v1.2: Detect domain from task goal for AST chunk categorization."""
+        goal_lower = goal.lower()
+        if any(kw in goal_lower for kw in ['flask', 'api', 'rest', 'endpoint', 'route', 'jwt', 'fastapi']):
+            return "web_api"
+        elif any(kw in goal_lower for kw in ['cli', 'command', 'argparse', 'terminal']):
+            return "cli"
+        elif any(kw in goal_lower for kw in ['database', 'sql', 'sqlite', 'orm', 'model']):
+            return "database"
+        elif any(kw in goal_lower for kw in ['test', 'pytest', 'unittest']):
+            return "testing"
+        elif any(kw in goal_lower for kw in ['scrape', 'crawl', 'parse', 'extract']):
+            return "scraping"
+        elif any(kw in goal_lower for kw in ['game', 'pygame', 'render']):
+            return "game"
+        return "general"
+
     def _detect_source_blame(self, task_state: TaskState) -> list:
         """
         v0.9.6: Source blame detection (MAST taxonomy research).
@@ -4361,6 +4407,64 @@ Do NOT rewrite from scratch. Start from this code and fix the failing parts.
                            f"snippets={curation_result.get('snippets', 0)}")
             except Exception as e:
                 logger.warning(f"📚 Librarian curation failed (non-fatal): {e}")
+
+        # v1.2: AST-aware snippet ingestion — store successful code as chunked patterns
+        try:
+            ast_chunks_stored = 0
+            for py_file in self.working_dir.glob("*.py"):
+                if py_file.name.startswith("test_") or py_file.name.startswith("."):
+                    continue
+                try:
+                    source = py_file.read_text()
+                    if len(source) > 50:
+                        count = add_ast_chunks(
+                            source=source,
+                            filename=py_file.name,
+                            domain=self._detect_domain(task_state.goal),
+                            session_id=task_state.task_id,
+                            db_path=self.librarian_db_path or "knowledge_base.db",
+                        )
+                        ast_chunks_stored += count
+                except Exception:
+                    pass
+            if ast_chunks_stored:
+                logger.info(f"📐 AST-aware RAG: stored {ast_chunks_stored} code chunks from successful build")
+        except Exception as e:
+            logger.debug(f"AST chunk ingestion failed (non-fatal): {e}")
+
+        # v1.2: Self-play training data collection — save (requirement → code) pairs
+        # for future QLoRA fine-tuning on successful outputs
+        try:
+            training_dir = self.working_dir / ".agents" / "training_pairs"
+            training_dir.mkdir(parents=True, exist_ok=True)
+            training_file = training_dir / f"{task_state.task_id}_selfplay.jsonl"
+
+            import json as _json
+            pairs = []
+            for py_file in self.working_dir.glob("*.py"):
+                if py_file.name.startswith(".") or py_file.name.startswith("__"):
+                    continue
+                try:
+                    code = py_file.read_text()
+                    if len(code) > 50:
+                        pairs.append({
+                            "instruction": f"Create {py_file.name} for: {task_state.goal[:500]}",
+                            "output": code,
+                            "filename": py_file.name,
+                            "iterations": task_state.iteration,
+                            "session_id": task_state.task_id,
+                            "is_test": py_file.name.startswith("test_"),
+                        })
+                except Exception:
+                    pass
+
+            if pairs:
+                with open(training_file, 'w') as f:
+                    for pair in pairs:
+                        f.write(_json.dumps(pair) + '\n')
+                logger.info(f"🧬 Self-play: saved {len(pairs)} training pairs to {training_file.name}")
+        except Exception as e:
+            logger.debug(f"Self-play data collection failed (non-fatal): {e}")
 
     def _escalate(self, task_state: TaskState, reason: str):
         task_state.phase = ExecutionPhase.ESCALATED
