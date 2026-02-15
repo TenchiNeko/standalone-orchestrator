@@ -448,7 +448,7 @@ def chunk_python_ast(
     """
     import ast as _ast
 
-    chunks = []
+    chunks: List[Dict[str, Any]] = []
     try:
         tree = _ast.parse(source)
     except SyntaxError:
@@ -636,8 +636,8 @@ def chunk_python_ast(
 
     # Merge small sibling MODULE-LEVEL chunks only (cAST approach)
     # Functions and classes are kept separate for precise retrieval
-    merged = []
-    buffer = None
+    merged: List[Dict[str, Any]] = []
+    buffer: Optional[Dict[str, Any]] = None
     for chunk in chunks:
         chunk_lines = chunk.get("line_end", 0) - chunk.get("line_start", 0) + 1
         # Only merge module_code chunks — keep functions/classes/methods separate
