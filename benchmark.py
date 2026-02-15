@@ -15,10 +15,9 @@ import os
 import subprocess
 import sys
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 # ---------------------------------------------------------------------------
 # Benchmark task definitions (ordered by difficulty level)
@@ -176,7 +175,7 @@ def run_task(task_id: int, base_dir: str = "/tmp/bench", max_iterations: int = 3
             print(f"\n  📋 Partial log saved to {log_file}")
             # Show last 20 lines for quick debugging
             last_lines = partial.strip().split('\n')[-20:]
-            print(f"  📋 Last output before timeout:")
+            print("  📋 Last output before timeout:")
             for line in last_lines:
                 print(f"     {line}")
         return result

@@ -1,0 +1,23 @@
+{
+  "timestamp": "2026-02-14T19:02:55.867386",
+  "results": [
+    {
+      "task_id": 5,
+      "task_name": "Expense Tracker with Auth",
+      "level": 6,
+      "started_at": "2026-02-14T17:02:55.845259",
+      "finished_at": "2026-02-14T19:02:55.867145",
+      "duration_seconds": 7200,
+      "iterations": 0,
+      "dod_passed": 0,
+      "dod_total": 0,
+      "tests_passed": 0,
+      "tests_total": 0,
+      "source_first_candidate": 0,
+      "source_total": 0,
+      "outcome": "timeout",
+      "error": "Exceeded 7200s timeout",
+      "log_file": "/tmp/bench/task5_20260214_170255.log"
+    }
+  ]
+}

@@ -1194,7 +1194,7 @@ class Orchestrator:
             if fixed:
                 # v1.1: Syntax-guarded write
                 if not self._safe_write_python(filepath, content):
-                    logger.warning(f"    ⚠️ Auto-import blocked — would create syntax error")
+                    logger.warning("    ⚠️ Auto-import blocked — would create syntax error")
                     return False
                 return True
 
@@ -1268,7 +1268,7 @@ class Orchestrator:
             if fixed:
                 # v1.1: Syntax-guarded write
                 if not self._safe_write_python(filepath, content):
-                    logger.warning(f"    ⚠️ Project import blocked — would create syntax error")
+                    logger.warning("    ⚠️ Project import blocked — would create syntax error")
                     return False
                 return True
 

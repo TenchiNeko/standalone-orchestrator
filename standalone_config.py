@@ -2,7 +2,7 @@
 Configuration for the standalone orchestrator.
 
 v0.8.0: Dual Ollama instance architecture.
-  - Instance 1 (port 11435): Llama 3.3 70B on GPUs 1,2,3 — plan + build
+  - Instance 1 (port 11435): Qwen3-Coder-Next 80B MoE on GPUs 1,2,3 — plan + build
   - Instance 2 (port 11436): Qwen 2.5 Coder 14B on GPU 0 (5060 Ti) — init, explore, test
   - No model swapping — both run simultaneously
   - RAG Knowledge Base on port 8787
@@ -83,7 +83,7 @@ def default_config() -> Config:
     v0.8.0 Dual-Instance Architecture:
     ===================================
     Cortana (Dell 7920): 4x GPU — 64GB VRAM total
-      Instance 1 (port 11435): Llama 3.3 70B (~40GB VRAM)
+      Instance 1 (port 11435): Qwen3-Coder-Next 80B MoE (~40GB VRAM)
         - GPUs: 1 (RTX 3090 24GB) + 2 (RTX 4070 Super 12GB) + 3 (RTX 4070 Super 12GB)
         - Roles: plan, build (heavy reasoning)
         - CUDA_VISIBLE_DEVICES=1,2,3
@@ -107,9 +107,9 @@ def default_config() -> Config:
 
     # --- Model definitions ---
 
-    # PRIMARY (Instance 1, port 11435): Llama 3.3 70B — heavy reasoning
+    # PRIMARY (Instance 1, port 11435): Qwen3-Coder-Next 80B MoE — heavy reasoning
     llama_70b = ModelConfig(
-        name="Llama 3.3 70B (Cortana Instance 1)",
+        name="Qwen3-Coder-Next 80B MoE (Cortana Instance 1)",
         provider="ollama",
         endpoint=os.environ.get("OLLAMA_PRIMARY_URL", "http://127.0.0.1:11435"),
         model_id="qwen3-coder-next",
