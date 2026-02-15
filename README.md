@@ -1,6 +1,7 @@
 # 🧠 The Unbroken Method — Standalone Orchestrator
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![CI](https://github.com/TenchiNeko/standalone-orchestrator/actions/workflows/ci.yml/badge.svg)](https://github.com/TenchiNeko/standalone-orchestrator/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![No Frameworks](https://img.shields.io/badge/frameworks-none-red.svg)](#design-philosophy)
 [![Local LLMs](https://img.shields.io/badge/LLMs-100%25%20local-purple.svg)](#architecture)
@@ -21,8 +22,22 @@ Give it a task description. It plans, builds, tests, debugs, and fixes — itera
 | **Lock-in** | Married to the framework's abstractions | Swap Ollama for vLLM/llama.cpp by changing one URL |
 | **Cost** | Usually wraps OpenAI/Anthropic APIs | 100% local, zero API costs |
 
+### Latest Benchmark (v1.2)
+
 ```
-Task: "Build a bookmark manager REST API with Flask..."
+🏁 Running 5 benchmark task(s)...
+
+Task 1: Calculator (Level 2)            → ✅ PASS  5/5 tests,   1 iter, 21m
+Task 2: Miniqueue (Level 3)             → ✅ PASS  20/20 tests, 1 iter, 11m
+Task 3: Task Tracker CLI (Level 4)      → ✅ PASS  38/38 tests, 3 iter, 21m
+Task 4: Bookmark Manager API (Level 5)  → ✅ PASS  70/78 tests, 2 iter, 29m
+Task 5: Expense Tracker + Auth (Level 6) → ⏰ timeout at 2h (re-running with 3h)
+```
+
+4/5 tasks passing. The system handles everything from simple classes to multi-file REST APIs with database, validation, and pagination — fully autonomously on local hardware.
+
+```
+Task: "Build a task tracker CLI with JSON persistence..."
 
 ITERATION 1
 ├─ EXPLORE    → Analyze requirements, identify patterns
@@ -30,19 +45,21 @@ ITERATION 1
 ├─ BUILD      → Sequential micro-builds with multi-candidate sampling
 │  ├─ models.py      ✅ (1st candidate, temp=0.0)
 │  ├─ database.py    ✅ (1st candidate, temp=0.0)
-│  ├─ validators.py  ✅ (1st candidate, temp=0.0)
-│  ├─ app.py         ✅ (2nd candidate, temp=0.4)
-│  ├─ test_models.py ✅ (2nd candidate, 9/9 tests pass)
-│  ├─ test_database.py ✅ (1st candidate, 15/15 tests pass)
-│  └─ test_app.py    ⚠️  (best of 4: 20/22 pass → edit repair)
-└─ TEST       → DoD verification: 6/8 criteria passed
+│  ├─ cli.py         ✅ (2nd candidate, temp=0.4)
+│  ├─ test_models.py ✅ (1st candidate, 12/12 tests pass)
+│  └─ test_cli.py    ⚠️  (best of 4: 28/30 → edit repair)
+└─ TEST       → DoD verification: 5/7 criteria passed
 
 ITERATION 2 (dependency-aware retry)
-├─ RCA        → "database.py has incomplete tag filtering"
-├─ BUILD      → Rebuild database.py + cascade dependents
-└─ TEST       → ✅ ALL DoD CRITERIA PASSED
+├─ RCA        → "cli.py missing --format flag for list command"
+├─ BUILD      → Rebuild cli.py + cascade dependents
+└─ TEST       → 7/7 DoD, 36/38 tests
 
-🎉 TASK COMPLETED SUCCESSFULLY
+ITERATION 3 (targeted edit repair)
+├─ EDIT REPAIR → Structured JSON schema → 2 surgical fixes
+└─ TEST       → ✅ ALL 38/38 TESTS PASS
+
+🎉 TASK COMPLETED SUCCESSFULLY (3 iterations, 21 minutes)
 ```
 
 ---
@@ -54,10 +71,11 @@ Cortana (Dell 7920) — 4x GPU, 64GB VRAM
 ┌─────────────────────────────────────────────────────────────┐
 │                                                             │
 │  Instance 1 (port 11435)          Instance 2 (port 11436)   │
-│  Qwen 3 Coder 80B                    Qwen 2.5 Coder 7B/14B    │
-│  GPUs 1+2+3 (48GB VRAM)               GPU 0 (16GB)              │
+│  Qwen3-Coder-Next 80B MoE        Qwen 2.5 Coder 7B/14B    │
+│  GPUs 1+2+3 (48GB VRAM)          GPU 0 (16GB)              │
 │  ┌──────────┐ ┌──────────┐       ┌──────────┐              │
 │  │ Planner  │ │ Builder  │       │ Explorer │              │
+│  │ /think   │ │ /think   │       │ /no_think│              │
 │  │ (reason) │ │ (code)   │       │ Init     │              │
 │  └──────────┘ └──────────┘       │ Tester   │              │
 │        │            │            │ Librarian│              │
@@ -65,17 +83,17 @@ Cortana (Dell 7920) — 4x GPU, 64GB VRAM
 │  ┌──────────────────────────────────────────┐              │
 │  │         standalone_orchestrator.py        │              │
 │  │  Plan → Build → Test → RCA → Retry       │              │
-│  │  AST signatures │ Import graphs │ DoD     │              │
+│  │  AST sigs │ Import graphs │ DoD │ AST-RAG│              │
 │  └──────────────────────────────────────────┘              │
 │        │                                                    │
 │  ┌─────┴─────┐  ┌──────────┐  ┌──────────────┐            │
 │  │ RAG KB    │  │ Librarian│  │ Trace        │            │
-│  │ 81 pats   │  │ Journal  │  │ Collector    │            │
-│  │ 15K docs  │  │ Snippets │  │ JSONL export │            │
+│  │ 81 pats   │  │ AST-RAG  │  │ Collector    │            │
+│  │ 15K docs  │  │ Journal  │  │ Self-Play    │            │
 │  └───────────┘  └──────────┘  └──────────────┘            │
-└─────────────────────────┬───────────────────────────────────┘
-                          │ rsync (auto-sync after each run)
-                          ▼
+└─────────────────────┬───────────────────────────────────────┘
+                      │ rsync (auto-sync after each run)
+                      ▼
 PVE Node (homeserver) — Qwen 2.5 Coder 7B
 ┌─────────────────────────────────────────────────────────────┐
 │  Subconscious Daemon (24/7)                                 │
@@ -118,9 +136,11 @@ Each file gets multiple candidates at different temperatures. The orchestrator p
 
 If no candidate is perfect, **Wave 2** kicks in: error-aware re-sampling that includes the specific errors from Wave 1 in the prompt.
 
-### Edit Repair
+### Edit Repair (v1.2: Grammar-Constrained)
 
-For files where the best candidate has most tests passing but a few failures, the orchestrator uses **SEARCH/REPLACE** blocks to surgically fix the failing tests without regenerating the whole file. Up to 3 rounds of iterative repair.
+For files where the best candidate has most tests passing but a few failures, the orchestrator uses surgical fixes. As of v1.2, edit repair uses **grammar-constrained structured output** — a JSON schema that guarantees 100% well-formed edits from the LLM, eliminating the 15-20% malformation rate of free-text SEARCH/REPLACE parsing.
+
+The system tries structured JSON repair first, and automatically falls back to text-based SEARCH/REPLACE if the model doesn't support the `format` parameter. Up to 3 rounds of iterative repair per file.
 
 Small files (<80 lines) skip edit repair and go straight to whole-file regeneration — it's faster and more reliable for short files.
 
@@ -153,89 +173,96 @@ This gives the model exact function signatures and constructor parameters in ~20
 
 ---
 
+## v1.2 Inference Optimizations
+
+v1.2 implements 7 optimizations drawn from 2025-2026 local LLM research:
+
+| Optimization | Source | Impact |
+|---|---|---|
+| Grammar-constrained structured output | Ollama `format` parameter | 100% well-formed edits (was 80-85%) |
+| Thinking tokens (/think, /no_think) | Qwen3 native, budget forcing research | Better reasoning for plan/build agents |
+| Repetition penalty disabled (1.0) | Stepfunction / r/LocalLLaMA | Qwen-Next very sensitive to penalties |
+| Nucleus sampling (top_p=0.95) | Qwen recommended params | Better sampling diversity |
+| AST-aware RAG chunking | cAST research (+4.3 Recall@5) | Semantic code chunks for retrieval |
+| Self-play training data collection | Sol-Ver, SICA research | JSONL pairs for QLoRA fine-tuning |
+| Speculative decoding support | Ollama server-side config | Configurable draft model for faster inference |
+
+All optimizations are configurable via JSON config overrides or environment variables. Each has a kill switch if issues arise in production.
+
+---
+
 ## File Reference
 
-### Core Orchestrator (runs on Cortana)
+### Core Orchestrator (13,245 lines total)
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `standalone_main.py` | 131 | CLI entry point. Parses args, loads config, starts orchestrator |
-| `standalone_orchestrator.py` | 4,351 | Main loop: plan → build → test → RCA → retry. Multi-candidate sampling, edit repair, AST signatures, import graphs, cascade rebuilds |
-| `standalone_agents.py` | 4,642 | Agent implementations for all roles. Ollama HTTP client, tool-use parsing, prompt construction, context injection |
-| `standalone_config.py` | 272 | Dual-instance Ollama config. Model routing, GPU assignments, agent role mapping |
-| `standalone_models.py` | 191 | Data models: `AgentResult`, `TaskState`, `BuildStep` |
-| `standalone_session.py` | 135 | Session state persistence (JSON) |
+| `standalone_main.py` | 132 | CLI entry point. Parses args, loads config, starts orchestrator |
+| `standalone_orchestrator.py` | 4,655 | Main loop: plan → build → test → RCA → retry. Multi-candidate sampling, edit repair, AST signatures, import graphs, cascade rebuilds, self-play data collection |
+| `standalone_agents.py` | 4,931 | Agent implementations. Ollama HTTP client, tool-use parsing, structured output, thinking token injection |
+| `standalone_config.py` | 302 | Dual-instance Ollama config. Model routing, GPU assignments, inference optimization parameters |
+| `standalone_models.py` | 196 | Data models: `AgentResult`, `TaskState`, `BuildStep` |
+| `standalone_session.py` | 134 | Session state persistence (JSON) |
 | `standalone_memory.py` | 197 | Cross-session memory management |
-| `standalone_trace_collector.py` | 468 | Records build/test/RCA failures as structured JSONL for analysis and LoRA training |
-| `kb_client.py` | ~200 | RAG Knowledge Base client. Queries pattern matches and documentation chunks on port 8787 |
-| `librarian.py` | 693 | Post-session curation using 7B model. Extracts journal entries, code snippets, and error patterns from completed sessions |
-| `librarian_store.py` | 428 | SQLite storage for librarian data (journal entries, code snippets) |
-| `playbook_reader.py` | ~150 | Reads the evolving playbook from the subconscious daemon. Injects top-scored bullets into agent prompts by role |
+| `standalone_trace_collector.py` | 468 | Records build/test/RCA failures as structured JSONL for analysis |
+| `kb_client.py` | 317 | RAG Knowledge Base client (port 8787) |
+| `librarian.py` | 693 | Post-session curation using 7B model |
+| `librarian_store.py` | 696 | SQLite storage + AST-aware code chunking |
+| `playbook_reader.py` | 181 | Reads evolving playbook from subconscious daemon |
+| `benchmark.py` | 343 | Standardized 5-task benchmark suite |
 
 ### Agent Prompts
 
-| File | Role | Used By |
-|------|------|---------|
-| `prompts/initializer.txt` | Set up workspace, git repo, venv, install deps | Qwen 7B/14B |
-| `prompts/explore.txt` | Analyze requirements, identify files and patterns | Qwen 7B/14B |
-| `prompts/plan.txt` | Generate DoD criteria with verification commands | Qwen 80B |
-| `prompts/build.txt` | Generate source code files | Qwen 80B |
-| `prompts/build_markdown.txt` | Alternative build format for markdown output | Qwen 80B |
-| `prompts/test_gen.txt` | Generate test files against source | Qwen 80B |
-| `prompts/test.txt` | Run tests, report results | Qwen 7B/14B |
-| `prompts/edit_repair.txt` | Surgical SEARCH/REPLACE fixes | Qwen 80B |
+| File | Role | Model |
+|------|------|-------|
+| `prompts/initializer.txt` | Set up workspace, git repo, venv | 7B/14B |
+| `prompts/explore.txt` | Analyze requirements and patterns | 7B/14B |
+| `prompts/plan.txt` | Generate DoD criteria | 80B (/think) |
+| `prompts/build.txt` | Generate source code | 80B (/think) |
+| `prompts/build_markdown.txt` | Alternative build format | 80B |
+| `prompts/test_gen.txt` | Generate test files against spec | 80B |
+| `prompts/test.txt` | Run tests, report results | 7B/14B (/no_think) |
+| `prompts/edit_repair.txt` | Surgical SEARCH/REPLACE fixes | 80B |
 
 ### Subconscious Daemon (runs on PVE node)
 
 | File | Purpose |
 |------|---------|
-| `subconscious-daemon/daemon.py` | Main daemon loop with priority queue. Analyzes sessions, updates playbook, extracts training pairs. Never idles |
-| `subconscious-daemon/config.py` | Daemon configuration: paths, timing, thresholds, safety limits |
-| `subconscious-daemon/playbook.py` | ACE-style evolving playbook. Delta updates, deduplication, quality scoring, stale pruning |
-| `subconscious-daemon/ollama_client.py` | Async Ollama HTTP client for the daemon's 7B model |
-| `subconscious-daemon/session_scanner.py` | Watches `/shared/sessions` for completed orchestrator sessions, parses into structured traces |
-| `subconscious-daemon/deploy.sh` | Installs daemon as systemd service on PVE node |
-| `subconscious-daemon/seed_playbook.py` | Pre-loads playbook with known patterns from debugging sessions |
-
-### Sync Scripts
-
-| File | Where | Purpose |
-|------|-------|---------|
-| `sync-session.sh` | Cortana | Pushes completed sessions to PVE node + pulls latest playbook back |
-| `backfill-sessions.sh` | Cortana | Syncs all existing `/tmp/bookmark-*` sessions to PVE |
+| `subconscious-daemon/daemon.py` | Main loop with priority queue |
+| `subconscious-daemon/config.py` | Daemon configuration |
+| `subconscious-daemon/playbook.py` | ACE-style evolving playbook |
+| `subconscious-daemon/ollama_client.py` | Async Ollama HTTP client |
+| `subconscious-daemon/session_scanner.py` | Watches for completed sessions |
+| `subconscious-daemon/deploy.sh` | systemd service installer |
+| `subconscious-daemon/seed_playbook.py` | Pre-load known patterns |
 
 ---
 
 ## The Knowledge Stack
 
-Three layers of accumulated knowledge, each operating at a different timescale:
+Four layers of accumulated knowledge, each operating at a different timescale:
 
 ### Layer 1: RAG Knowledge Base (static, curated)
 - **81 error→solution patterns** extracted from past failures
 - **15,500+ documentation chunks** (CPython, Flask, pytest, sqlite3, dataclasses)
-- Queried per-file during builds: "KB provided proactive context for database.py"
+- Queried per-file during builds
 - Runs as a systemd service on port 8787
 
 ### Layer 2: Librarian (per-session, 7B curator)
 - Runs after each session completes (success or failure)
-- Uses the 7B model to extract **journal entries** (lessons learned) and **code snippets** (reusable patterns)
-- Stored in persistent SQLite — survives across benchmark runs
-- Injected into future sessions as supplementary context
+- Extracts **journal entries** (lessons learned) and **code snippets** (reusable patterns)
+- **v1.2:** AST-aware code chunking stores semantic function/class chunks for retrieval
+- Stored in persistent SQLite
 
 ### Layer 3: Subconscious Daemon (continuous, cross-session)
 - Runs 24/7 on a separate node with its own 7B model
-- Implements the **ACE (Agentic Context Engineering)** framework from Stanford/SambaNova
-- Maintains an evolving **playbook** of bullet-point heuristics
-- Each bullet has helpful/harmful counters tracked by real test outcomes
-- Priority queue ensures most valuable work happens first:
+- Implements the **ACE (Agentic Context Engineering)** framework
+- Maintains an evolving **playbook** of bullet-point heuristics with helpful/harmful scoring
 
-| Priority | Task | Trigger |
-|----------|------|---------|
-| P0 | Analyze new session | Session completed |
-| P1 | Update playbook | After analysis |
-| P2 | Extract training pairs | Successful sessions |
-| P3 | Re-analyze old sessions | Every 24h (multi-epoch) |
-| P7 | Self-evaluate playbook | Nightly (prune stale/harmful bullets) |
+### Layer 4: Self-Play Training Data (v1.2)
+- On successful task completion, saves (requirement → code) pairs as JSONL
+- Auto-categorizes by domain (web_api, cli, database, testing, scraping, etc.)
+- Ready for QLoRA fine-tuning with Unsloth
 
 ---
 
@@ -243,15 +270,15 @@ Three layers of accumulated knowledge, each operating at a different timescale:
 
 ### Minimum (single GPU)
 - 1x GPU with 24GB+ VRAM (RTX 3090, RTX 4090)
-- Run a single Ollama instance with a 14B-34B model
-- Modify `standalone_config.py` to point both roles at the same endpoint
+- Single Ollama instance with a 14B-34B model
+- Point both roles at the same endpoint in `standalone_config.py`
 
 ### Recommended (multi-GPU, as built)
 
 ```
 Cortana (Dell 7920 Workstation)
 ├─ GPU 0: RTX 5060 Ti 16GB  → Ollama Instance 2 (port 11436) → Qwen 2.5 Coder 7B
-├─ GPU 1: RTX 3090 24GB     → Ollama Instance 1 (port 11435) → Qwen 3 Coder 80B
+├─ GPU 1: RTX 3090 24GB     → Ollama Instance 1 (port 11435) → Qwen3-Coder-Next 80B
 ├─ GPU 2: RTX 4070 Super 12GB → Ollama Instance 1 (tensor parallel)
 ├─ GPU 3: RTX 4070 Super 12GB → Ollama Instance 1 (tensor parallel)
 └─ Total: 64GB VRAM, no model swapping
@@ -274,16 +301,14 @@ CUDA_VISIBLE_DEVICES=1,2,3 OLLAMA_HOST=0.0.0.0:11435 ollama serve
 CUDA_VISIBLE_DEVICES=0 OLLAMA_HOST=0.0.0.0:11436 ollama serve
 
 # Pull models
-OLLAMA_HOST=localhost:11435 ollama pull qwen3-coder:80b
+OLLAMA_HOST=localhost:11435 ollama pull qwen3-coder-next
 OLLAMA_HOST=localhost:11436 ollama pull qwen2.5-coder:7b
 ```
 
 ### 2. Start the RAG Knowledge Base
 
 ```bash
-# If you have the KB server set up:
-sudo systemctl start rag-kb
-# Runs on port 8787
+sudo systemctl start rag-kb    # Runs on port 8787
 ```
 
 ### 3. Run a task
@@ -298,17 +323,12 @@ python3 standalone_main.py \
   --working-dir /tmp/bookmark-test
 ```
 
-### 4. (Optional) Set up the subconscious daemon
+### 4. Run the benchmark suite
 
 ```bash
-# On PVE node:
-cd subconscious-daemon
-bash deploy.sh
-python3 seed_playbook.py       # Pre-load known patterns
-sudo systemctl start subconscious
-
-# On main node:
-bash sync-session.sh /tmp/bookmark-test   # Push session for analysis
+make benchmark          # Full suite (5 tasks, ~2-3 hours)
+make benchmark-quick    # Level 2 only (~20 min)
+python3 benchmark.py --task 4   # Single task
 ```
 
 ---
@@ -317,12 +337,10 @@ bash sync-session.sh /tmp/bookmark-test   # Push session for analysis
 
 This project follows the **library approach** — not the framework approach. There are no base classes to inherit from, no decorators to register agents, no YAML-driven pipelines. The orchestrator is a Python script that calls Ollama's HTTP API directly.
 
-**Why no frameworks?**
-
-- **Full control over execution flow.** When the model generates broken JSON, we handle it. When a file needs 5 retries at different temperatures, we control that loop. Frameworks abstract this away and break when edge cases hit.
-- **No dependency rot.** The entire system depends on: Python stdlib, `httpx`, `ollama` HTTP API. That's it. No LangChain, no CrewAI, no AutoGen, no vendor lock-in.
-- **Debuggable.** When something fails, you read the Python code and the Ollama logs. No framework magic, no middleware chains, no callback hell.
-- **Portable.** Swap Ollama for vLLM, llama.cpp, or any OpenAI-compatible API by changing the HTTP endpoint in `standalone_config.py`. The orchestration logic doesn't care what serves the model.
+- **Full control over execution flow.** When the model generates broken JSON, we handle it. When a file needs 5 retries at different temperatures, we control that loop.
+- **No dependency rot.** Python stdlib + httpx. That's it.
+- **Debuggable.** Read the Python code and the Ollama logs. No framework magic.
+- **Portable.** Swap Ollama for vLLM, llama.cpp, or any OpenAI-compatible API by changing one URL.
 
 ---
 
@@ -333,39 +351,39 @@ This project follows the **library approach** — not the framework approach. Th
 | Multi-candidate sampling | Aider, AlphaCode | Temperature sweep per file, best-of-N selection |
 | AST-based repo maps | Aider (tree-sitter) | `_extract_signatures_ast()` in orchestrator |
 | Import dependency graphs | Custom | `_build_import_graph()` + `_get_dependents()` |
-| Edit-based repair | Aider (SEARCH/REPLACE) | 5-layer fuzzy matching for surgical fixes |
+| Grammar-constrained output | Ollama structured output | `EDIT_REPAIR_SCHEMA` JSON schema for edits |
+| Thinking tokens | Qwen3 /think, budget forcing | Per-agent injection in `_run_agent()` |
+| AST-aware RAG | cAST research | `chunk_python_ast()` in librarian_store |
 | Spec-anchored TDD | EvalPlus, TiCoder | Tests written against task spec, not source |
-| Context engineering | Anthropic research | Compact API contracts to prevent context rot |
-| Localization → Repair → Validation | Agentless (UIUC) | RCA identifies root cause, retry fixes targeted files |
-| ACE playbook evolution | Stanford/SambaNova | Subconscious daemon with delta updates + quality tracking |
-| Architect/Editor split | Aider | 80B reasons about the problem, 7B/14B handles fast execution |
+| Self-play data collection | Sol-Ver, SICA | JSONL pairs for QLoRA fine-tuning |
+| Localization → Repair → Validation | Agentless (UIUC) | RCA → targeted rebuild → verify |
+| ACE playbook evolution | Stanford/SambaNova | Subconscious daemon with quality tracking |
+| Architect/Editor split | Aider | 80B reasons, 7B/14B executes |
 
 ---
 
-## Project Status
+## Version History
 
-**v1.0** — Active development. The orchestrator successfully completes multi-file Flask REST API tasks with 4-8 source+test files in 1-3 iterations. Typical benchmark: bookmark manager API with models, database, validators, routes, and comprehensive tests.
+| Version | Date | Highlights |
+|---------|------|------------|
+| v1.2 | 2026-02-15 | Inference optimizations: structured edits, thinking tokens, AST-RAG, self-play |
+| v1.1c | 2026-02-14 | Fixed num_ctx bug (128K→2K truncation), branch audit, 4 critical bug fixes |
+| v1.0c | 2026-02-14 | First 8/8 DoD pass on Level 5. Cascade rebuilds, RCA working end-to-end |
+| v0.9.9 | 2026-02-13 | Multi-candidate sampling, edit repair, Wave 2 re-sampling |
+| v0.6.x | 2026-02-12 | Trace collector, snapshot protection, error-aware sampling |
+| v0.5.x | 2026-02-10 | Post-build verification redesign, context budgets, RCA evidence |
+| v0.4.x | 2026-02-08 | Structured output, 5-Whys RCA, micro-build architecture |
+| v0.3.0 | 2026-02-06 | Standalone system (no opencode dependency), direct Ollama API |
 
-Known limitations:
-- Edit repair SEARCH/REPLACE matching has ~50% apply rate with 80B models (fuzzy matching helps but isn't perfect)
-- Test files for complex endpoints (app.py with 6+ routes) remain the hardest to generate correctly on first attempt
-- The subconscious daemon's training pair extraction is implemented but LoRA fine-tuning pipeline is not yet automated end-to-end
+See [BENCHMARKS.md](BENCHMARKS.md) for detailed results and [ROADMAP.md](ROADMAP.md) for what's next.
 
 ---
-
-## Star History
-
-If this project is useful to you, a ⭐ helps others find it.
 
 ## License
 
 MIT License — see [LICENSE](LICENSE) for details.
 
----
-
 *Built with patience, mass quantities of GPU hours, and zero framework dependencies by [@TenchiNeko](https://github.com/TenchiNeko).*
-
----
 
 ### Keywords
 
