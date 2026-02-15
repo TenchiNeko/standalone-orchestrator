@@ -1124,7 +1124,7 @@ class Orchestrator:
         return last_toplevel_import
 
     @staticmethod
-    def _safe_write_python(filepath, new_content: str, original_content: str = None) -> bool:
+    def _safe_write_python(filepath, new_content: str, original_content: Optional[str] = None) -> bool:
         """v1.1: Write Python file only if new content parses without SyntaxError.
 
         If syntax check fails and original_content is provided, reverts to original.

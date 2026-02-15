@@ -77,13 +77,12 @@ with open('standalone_agents.py') as f:
     agents_src = f.read()
 
 # B1: repeat_penalty in both options blocks
-import re
-options_blocks = re.findall(r'"options":\s*\{[^}]+\}', agents_src)
-rp_count = sum(1 for b in options_blocks if 'repeat_penalty' in b)
+# Options are now built as separate dicts (options, options2) then assigned to payload
+rp_count = agents_src.count('"repeat_penalty": self.config.repeat_penalty')
 check(f"B1: repeat_penalty in {rp_count}/2 options", rp_count >= 2)
 
 # B2: top_p in both options blocks
-tp_count = sum(1 for b in options_blocks if 'top_p' in b)
+tp_count = agents_src.count('"top_p": self.config.top_p')
 check(f"B2: top_p in {tp_count}/2 options", tp_count >= 2)
 
 # B3: num_keep conditionally added

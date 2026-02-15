@@ -1115,24 +1115,26 @@ class LLMClient:
         endpoint = (self.config.endpoint or "http://127.0.0.1:11434").rstrip("/")
         url = f"{endpoint}/api/chat"
 
-        payload = {
-            "model": self.config.model_id,
-            "messages": messages,
-            "stream": False,
-            "format": schema,
-            "options": {
+        options: dict[str, object] = {
                 "temperature": temperature if temperature is not None else self.config.temperature,
                 "num_predict": self.config.max_tokens,
                 "num_ctx": self.config.context_window,  # v1.1c: was missing — Ollama defaulted to 2048
                 "repeat_penalty": self.config.repeat_penalty,  # v1.2: disabled for Qwen-Next (default 1.0)
                 "top_p": self.config.top_p,  # v1.2: nucleus sampling
             }
-        }
         # v1.2: Conditionally add optional parameters
         if self.config.min_p > 0:
-            payload["options"]["min_p"] = self.config.min_p
+            options["min_p"] = self.config.min_p
         if self.config.num_keep >= 0:
-            payload["options"]["num_keep"] = self.config.num_keep
+            options["num_keep"] = self.config.num_keep
+
+        payload = {
+            "model": self.config.model_id,
+            "messages": messages,
+            "stream": False,
+            "format": schema,
+            "options": options,
+        }
 
         try:
             resp = self.session.post(url, json=payload, timeout=900)  # v0.9.9c: 600→900 (edit repair on large files)
@@ -1164,23 +1166,25 @@ class LLMClient:
         endpoint = (self.config.endpoint or "http://127.0.0.1:11434").rstrip("/")
         url = f"{endpoint}/api/chat"
 
-        payload = {
-            "model": self.config.model_id,
-            "messages": messages,
-            "stream": False,
-            "options": {
+        options2: dict[str, object] = {
                 "temperature": temperature if temperature is not None else self.config.temperature,
                 "num_predict": self.config.max_tokens,
                 "num_ctx": self.config.context_window,  # v1.1c: was missing — Ollama defaulted to 2048
                 "repeat_penalty": self.config.repeat_penalty,  # v1.2: disabled for Qwen-Next (default 1.0)
                 "top_p": self.config.top_p,  # v1.2: nucleus sampling
             }
-        }
         # v1.2: Conditionally add optional parameters
         if self.config.min_p > 0:
-            payload["options"]["min_p"] = self.config.min_p
+            options2["min_p"] = self.config.min_p
         if self.config.num_keep >= 0:
-            payload["options"]["num_keep"] = self.config.num_keep
+            options2["num_keep"] = self.config.num_keep
+
+        payload = {
+            "model": self.config.model_id,
+            "messages": messages,
+            "stream": False,
+            "options": options2,
+        }
 
         if tools and self.config.supports_tools:
             payload["tools"] = tools

@@ -479,7 +479,7 @@ def chunk_python_ast(
             module_imports.append(f"from {node.module or ''} import {names}")
 
     # Process top-level definitions
-    pending_lines = []  # Module-level code between definitions
+    pending_lines: list[str] = []  # Module-level code between definitions
     pending_start = 1
 
     for node in _ast.iter_child_nodes(tree):
@@ -639,11 +639,11 @@ def chunk_python_ast(
     merged = []
     buffer = None
     for chunk in chunks:
-        chunk_lines = chunk.get("line_end", 0) - chunk.get("line_start", 0) + 1
+        chunk_lines = int(chunk.get("line_end", 0)) - int(chunk.get("line_start", 0)) + 1
         # Only merge module_code chunks — keep functions/classes/methods separate
         if chunk["type"] == "module_code" and chunk_lines < min_chunk_lines:
             if buffer is not None and buffer["type"] == "module_code":
-                buffer_lines = buffer.get("line_end", 0) - buffer.get("line_start", 0) + 1
+                buffer_lines = int(buffer.get("line_end", 0)) - int(buffer.get("line_start", 0)) + 1
                 if buffer_lines + chunk_lines <= max_chunk_lines:
                     buffer["name"] += f" + {chunk['name']}"
                     buffer["code"] += f"\n\n{chunk['code']}"
