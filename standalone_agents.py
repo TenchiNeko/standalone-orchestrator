@@ -21,10 +21,10 @@ import logging
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
-import requests  # type: ignore[import-untyped]
+import httpx
 
 from standalone_config import Config, AgentConfig, ModelConfig
-from standalone_models import TaskState, AgentResult, DoD, IterationResult
+from standalone_models import TaskState, AgentResult, DoD, DoDCriterion, IterationResult
 from playbook_reader import PlaybookReader
 
 logger = logging.getLogger(__name__)
@@ -33,96 +33,6 @@ logger = logging.getLogger(__name__)
 # ============================================================
 # Context Budget Utilities
 # ============================================================
-
-# v1.1: Flask golden snippets — inject verbatim into build prompts
-# Research: Antirez (Redis creator) found that injecting exact documentation
-# into LLM context makes them "expert level immediately" at using the API.
-# These patterns are tested and known-good for the expense tracker benchmark.
-FLASK_GOLDEN_SNIPPET = (
-    "## Flask Reference Patterns — COPY THESE EXACTLY\n\n"
-    "### Application Factory with Database\n"
-    "```python\n"
-    "import os\n"
-    "from flask import Flask, request, jsonify, g\n\n"
-    "def create_app(test_config=None):\n"
-    "    app = Flask(__name__)\n"
-    "    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key')\n\n"
-    "    if test_config:\n"
-    "        app.config.update(test_config)\n\n"
-    "    def get_db():\n"
-    "        if 'db' not in g:\n"
-    "            db_path = app.config.get('DATABASE_PATH', 'app.db')\n"
-    "            g.db = YourDatabase(db_path)  # Replace with actual DB class\n"
-    "        return g.db\n\n"
-    "    @app.teardown_appcontext\n"
-    "    def close_db(exception=None):\n"
-    "        db = g.pop('db', None)\n"
-    "        if db is not None:\n"
-    "            db.close()\n\n"
-    "    # Define ALL routes inside create_app using get_db()\n"
-    "    @app.route('/items', methods=['GET'])\n"
-    "    def list_items():\n"
-    "        db = get_db()\n"
-    "        return jsonify(db.get_all())\n\n"
-    "    return app\n\n"
-    "app = create_app()  # Module-level for 'from app import app'\n"
-    "```\n\n"
-    "### JWT Auth Pattern\n"
-    "```python\n"
-    "import jwt\n"
-    "import hashlib\n"
-    "import os\n"
-    "from datetime import datetime, timedelta\n"
-    "from functools import wraps\n"
-    "from flask import request, jsonify, g\n\n"
-    "def hash_password(password):\n"
-    "    salt = os.urandom(32)\n"
-    "    key = hashlib.pbkdf2_hmac('sha256', password.encode(), salt, 100000)\n"
-    "    return salt.hex() + ':' + key.hex()\n\n"
-    "def verify_password(stored, provided):\n"
-    "    salt_hex, key_hex = stored.split(':')\n"
-    "    salt = bytes.fromhex(salt_hex)\n"
-    "    key = hashlib.pbkdf2_hmac('sha256', provided.encode(), salt, 100000)\n"
-    "    return key.hex() == key_hex\n\n"
-    "def create_token(user_id, secret_key, expires_hours=24):\n"
-    "    payload = {'user_id': user_id, 'exp': datetime.utcnow() + timedelta(hours=expires_hours)}\n"
-    "    return jwt.encode(payload, secret_key, algorithm='HS256')\n\n"
-    "def verify_token(token, secret_key):\n"
-    "    try:\n"
-    "        payload = jwt.decode(token, secret_key, algorithms=['HS256'])\n"
-    "        return payload['user_id']\n"
-    "    except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):\n"
-    "        return None\n\n"
-    "def login_required(f):\n"
-    "    @wraps(f)\n"
-    "    def decorated(*args, **kwargs):\n"
-    "        token = request.headers.get('Authorization', '').replace('Bearer ', '')\n"
-    "        if not token:\n"
-    "            return jsonify({'error': 'Token required'}), 401\n"
-    "        user_id = verify_token(token, current_app.config['SECRET_KEY'])\n"
-    "        if not user_id:\n"
-    "            return jsonify({'error': 'Invalid token'}), 401\n"
-    "        g.current_user_id = user_id\n"
-    "        return f(*args, **kwargs)\n"
-    "    return decorated\n"
-    "```\n\n"
-    "### Flask Test Fixture\n"
-    "```python\n"
-    "import pytest\n"
-    "from app import create_app\n\n"
-    "@pytest.fixture\n"
-    "def app():\n"
-    "    app = create_app({'TESTING': True, 'DATABASE_PATH': ':memory:'})\n"
-    "    yield app\n\n"
-    "@pytest.fixture\n"
-    "def client(app):\n"
-    "    return app.test_client()\n"
-    "```\n\n"
-    "CRITICAL: get_db() and close_db() must be CLOSURES inside create_app(), "
-    "NOT class methods or module-level functions. The 'g' object only works "
-    "inside a Flask request/app context.\n"
-)
-
 
 def estimate_tokens(text: str) -> int:
     """
@@ -442,41 +352,6 @@ RCA_OUTPUT_SCHEMA = {
     "required": ["root_cause", "why_chain", "what_to_change", "concrete_edits", "needs_re_exploration", "severity"]
 }
 
-# v1.2: Structured output schema for edit repair — grammar-constrained generation
-# Guarantees 100% well-formed output (vs 15-20% malformation with free-text parsing)
-EDIT_REPAIR_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "edits": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "search": {
-                        "type": "string",
-                        "description": "Exact lines from the current file to find and replace. Include 2-3 context lines."
-                    },
-                    "replace": {
-                        "type": "string",
-                        "description": "The corrected replacement lines."
-                    },
-                    "reason": {
-                        "type": "string",
-                        "description": "Brief explanation of what this edit fixes."
-                    }
-                },
-                "required": ["search", "replace"]
-            },
-            "description": "List of search/replace edits to apply surgically."
-        },
-        "analysis": {
-            "type": "string",
-            "description": "Brief analysis of root cause of the failing tests."
-        }
-    },
-    "required": ["edits"]
-}
-
 TOOL_DEFINITIONS = [
     {
         "type": "function",
@@ -701,6 +576,14 @@ class ToolExecutor:
         "node_modules/",
     ]
 
+    def _validate_path(self, path: str) -> Path:
+        """Resolve path and ensure it stays within working_dir. Raises ValueError on traversal."""
+        full_path = (self.working_dir / path).resolve()
+        working_resolved = self.working_dir.resolve()
+        if not str(full_path).startswith(str(working_resolved)):
+            raise ValueError(f"Path traversal blocked: '{path}' resolves outside working directory")
+        return full_path
+
     def _write_file(self, args: dict) -> str:
         path = args.get("path", "")
         content = args.get("content", "")
@@ -717,7 +600,7 @@ class ToolExecutor:
         if path == ".gitignore" or path.endswith("/.gitignore"):
             content = self._protect_gitignore(content)
 
-        full_path = self.working_dir / path
+        full_path = self._validate_path(path)
         full_path.parent.mkdir(parents=True, exist_ok=True)
         full_path.write_text(content)
 
@@ -760,7 +643,7 @@ class ToolExecutor:
         if not path:
             return "ERROR: No path provided"
 
-        full_path = self.working_dir / path
+        full_path = self._validate_path(path)
         if not full_path.exists():
             return f"ERROR: File not found: {path}"
         if not full_path.is_file():
@@ -779,7 +662,7 @@ class ToolExecutor:
         path = args.get("path", ".")
         recursive = args.get("recursive", False)
 
-        full_path = self.working_dir / path
+        full_path = self._validate_path(path)
         if not full_path.exists():
             return f"ERROR: Directory not found: {path}"
 
@@ -810,7 +693,7 @@ class ToolExecutor:
         if not path:
             return "ERROR: No path provided"
 
-        full_path = self.working_dir / path
+        full_path = self._validate_path(path)
         if not full_path.exists():
             return f"ERROR: File not found: {path}"
 
@@ -1064,7 +947,7 @@ class LLMClient:
 
     def __init__(self, model_config: ModelConfig):
         self.config = model_config
-        self.session = requests.Session()
+        self.session = httpx.Client(timeout=900)
         self.session.headers.update({"Content-Type": "application/json"})
 
     def chat(
@@ -1115,25 +998,15 @@ class LLMClient:
         endpoint = (self.config.endpoint or "http://127.0.0.1:11434").rstrip("/")
         url = f"{endpoint}/api/chat"
 
-        options: dict[str, object] = {
-                "temperature": temperature if temperature is not None else self.config.temperature,
-                "num_predict": self.config.max_tokens,
-                "num_ctx": self.config.context_window,  # v1.1c: was missing — Ollama defaulted to 2048
-                "repeat_penalty": self.config.repeat_penalty,  # v1.2: disabled for Qwen-Next (default 1.0)
-                "top_p": self.config.top_p,  # v1.2: nucleus sampling
-            }
-        # v1.2: Conditionally add optional parameters
-        if self.config.min_p > 0:
-            options["min_p"] = self.config.min_p
-        if self.config.num_keep >= 0:
-            options["num_keep"] = self.config.num_keep
-
         payload = {
             "model": self.config.model_id,
             "messages": messages,
             "stream": False,
             "format": schema,
-            "options": options,
+            "options": {
+                "temperature": temperature if temperature is not None else self.config.temperature,
+                "num_predict": self.config.max_tokens,
+            }
         }
 
         try:
@@ -1166,24 +1039,14 @@ class LLMClient:
         endpoint = (self.config.endpoint or "http://127.0.0.1:11434").rstrip("/")
         url = f"{endpoint}/api/chat"
 
-        options2: dict[str, object] = {
-                "temperature": temperature if temperature is not None else self.config.temperature,
-                "num_predict": self.config.max_tokens,
-                "num_ctx": self.config.context_window,  # v1.1c: was missing — Ollama defaulted to 2048
-                "repeat_penalty": self.config.repeat_penalty,  # v1.2: disabled for Qwen-Next (default 1.0)
-                "top_p": self.config.top_p,  # v1.2: nucleus sampling
-            }
-        # v1.2: Conditionally add optional parameters
-        if self.config.min_p > 0:
-            options2["min_p"] = self.config.min_p
-        if self.config.num_keep >= 0:
-            options2["num_keep"] = self.config.num_keep
-
         payload = {
             "model": self.config.model_id,
             "messages": messages,
             "stream": False,
-            "options": options2,
+            "options": {
+                "temperature": temperature if temperature is not None else self.config.temperature,
+                "num_predict": self.config.max_tokens,
+            }
         }
 
         if tools and self.config.supports_tools:
@@ -1193,10 +1056,10 @@ class LLMClient:
             resp = self.session.post(url, json=payload, timeout=900)  # v0.9.9c: 600→900 (edit repair on large files)
             resp.raise_for_status()
             data = resp.json()
-        except requests.exceptions.ConnectionError as e:
+        except httpx.ConnectError as e:
             raise ConnectionError(f"Cannot connect to Ollama at {endpoint}: {e}")
-        except requests.exceptions.Timeout:
-            raise TimeoutError("Ollama request timed out after 900s")
+        except httpx.TimeoutException:
+            raise TimeoutError(f"Ollama request timed out after 900s")
         except Exception as e:
             raise RuntimeError(f"Ollama API error: {e}")
 
@@ -1389,29 +1252,6 @@ class AgentRunner:
             if playbook_context:
                 system_prompt = system_prompt + "\n\n" + playbook_context
                 logger.debug(f"Playbook injected for {agent_config.role}: {len(playbook_context)} chars")
-
-            # v1.2: Thinking mode injection (Qwen3 /think and /no_think commands)
-            # Heavy agents (plan, build, edit_repair) get extended reasoning
-            # Light agents (init, explore, test) get fast mode
-            thinking_mode = agent_config.model.thinking_mode
-            if thinking_mode == "auto":
-                # Map agent roles to thinking behavior
-                heavy_roles = {"plan", "build"}
-                if agent_config.role in heavy_roles:
-                    thinking_mode = "enabled"
-                else:
-                    thinking_mode = "disabled"
-
-            if thinking_mode == "enabled":
-                system_prompt = "/think\n" + system_prompt
-                # Add thinking budget if configured
-                if agent_config.model.thinking_budget > 0:
-                    system_prompt += f"\n\n<thinking_budget>{agent_config.model.thinking_budget}</thinking_budget>"
-                logger.debug(f"  Thinking mode: ENABLED for {agent_config.role}")
-            elif thinking_mode == "disabled":
-                system_prompt = "/no_think\n" + system_prompt
-                logger.debug(f"  Thinking mode: DISABLED for {agent_config.role}")
-
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": user_prompt})
 
@@ -1492,7 +1332,7 @@ class AgentRunner:
                     if agent_config.model.provider == "anthropic":
                         messages.append({
                             "role": "user",
-                            "content": [{  # type: ignore[dict-item]
+                            "content": [{
                                 "type": "tool_result",
                                 "tool_use_id": tc.get("id", ""),
                                 "content": tool_result
@@ -1797,6 +1637,7 @@ IMPORTANT:
         This runs before any LLM agent touches the project, so the build
         agent never wastes rounds on 'git init' or 'pip install pytest'.
         """
+        import shutil
 
         wd = self.working_dir
 
@@ -2621,7 +2462,7 @@ Read this carefully. Your tests must import from and test the actual classes/fun
                 dep_path = self.working_dir / dep
                 if dep_path.exists():
                     try:
-                        dep_content = dep_path.read_text()[:4000]  # v1.0: 2000→4000
+                        dep_content = dep_path.read_text()[:2000]
                         deps_lines.append(f"### `{dep}`\n```python\n{dep_content}\n```")
                     except Exception:
                         pass
@@ -2746,7 +2587,7 @@ Write the file now using `write_file`, then verify.
                 source_path = self.working_dir / (tests_for + '.py')
             if source_path.exists():
                 try:
-                    source_content = source_path.read_text()[:6000]  # v1.0: 3000→6000
+                    source_content = source_path.read_text()[:3000]
                     source_context = f"""
 ## Source Module Being Tested: `{tests_for}`
 ```python
@@ -2755,34 +2596,6 @@ Write the file now using `write_file`, then verify.
 Read this carefully. Your tests must import from and test the actual classes/functions defined above.
 """
                     contract_section = self._extract_api_contract(tests_for, source_content)
-
-                    # v1.0: Inject compact API signatures for OTHER source files
-                    # so the test can see the full API chain (e.g., test_app needs
-                    # to know database.py has BookmarkDB with get_all(page, tag))
-                    # Research: Anthropic's context engineering shows that more tokens
-                    # ≠ better results — "context rot" degrades attention. So we inject
-                    # compact signatures, not full source, for dependencies.
-                    dep_contracts = []
-                    for dep_file in sorted(self.working_dir.glob("*.py")):
-                        if dep_file.name.startswith("test_") or dep_file.name.startswith("__"):
-                            continue
-                        if dep_file.name == source_path.name:
-                            continue  # Already injected full source above
-                        try:
-                            dep_src = dep_file.read_text()
-                            dep_contract = self._extract_api_contract(dep_file.name, dep_src)
-                            if dep_contract:
-                                dep_contracts.append(
-                                    f"### `{dep_file.name}` API:\n{dep_contract}"
-                                )
-                        except Exception:
-                            continue
-                    if dep_contracts:
-                        source_context += (
-                            "\n## Other Source Module APIs (use these exact imports)\n\n"
-                            + "\n\n".join(dep_contracts)
-                            + "\n\nImport from these modules using the exact names above.\n"
-                        )
                 except Exception:
                     pass
 
@@ -2840,7 +2653,7 @@ Read this carefully. Your tests must import from and test the actual classes/fun
                 dep_path = self.working_dir / dep
                 if dep_path.exists():
                     try:
-                        dep_content = dep_path.read_text()[:4000]  # v1.0: 2000→4000
+                        dep_content = dep_path.read_text()[:2000]
                         deps_lines.append(f"### `{dep}`\n```python\n{dep_content}\n```")
                     except Exception:
                         pass
@@ -2864,16 +2677,6 @@ Import from these modules as needed. Use the exact class/function names shown ab
         kb_section = ""
         if kb_context:
             kb_section = kb_context
-
-        # v1.1: Flask golden snippet injection
-        # Research: Antirez found injecting exact docs makes LLMs expert-level immediately
-        flask_section = ""
-        goal_lower = (state.goal or "").lower()
-        file_lower = filename.lower()
-        desc_lower = (step_info.get('description', '') or '').lower()
-        if any(kw in goal_lower or kw in file_lower or kw in desc_lower
-               for kw in ['flask', 'api', 'rest api', 'endpoint', 'route', 'jwt', 'auth']):
-            flask_section = FLASK_GOLDEN_SNIPPET
 
         # --- System prompt: raw output, no tools ---
         system_prompt = (
@@ -2903,7 +2706,6 @@ Import from these modules as needed. Use the exact class/function names shown ab
         )
 
         user_prompt = f"""{kb_section}
-{flask_section}
 ## Task
 {state.goal}
 
@@ -2977,14 +2779,6 @@ Now write the complete `{filename}` between the markers:
                 feedback_section += f"\n{fb}\n"
             feedback_section += "\nFix these matching issues in your new SEARCH blocks.\n"
 
-        # v1.1: Flask golden snippets for edit repair (was only in build)
-        flask_section = ""
-        goal_lower = (state.goal or "").lower()
-        file_lower = filename.lower()
-        if any(kw in goal_lower or kw in file_lower
-               for kw in ['flask', 'api', 'rest api', 'endpoint', 'route', 'jwt', 'auth', 'app.py']):
-            flask_section = f"\n## Flask Reference Patterns\n{FLASK_GOLDEN_SNIPPET}\n"
-
         user_prompt = f"""## Task
 {state.goal}
 
@@ -2998,7 +2792,6 @@ Your SEARCH blocks should match the CONTENT part (after the `| `), not the tags.
 
 {source_context}
 {contract_section}
-{flask_section}
 
 {feedback_section}
 
@@ -3021,104 +2814,6 @@ Produce SEARCH/REPLACE edits to fix the failing tests.
             agent_config, system_prompt, user_prompt,
             tools=None, temperature=temperature
         )
-
-    def run_edit_repair_structured(
-        self,
-        state: TaskState,
-        filename: str,
-        current_content: str,
-        test_output: str,
-        source_context: str = "",
-        contract_section: str = "",
-        temperature: float = 0.2,
-    ) -> Optional[list]:
-        """
-        v1.2: Structured edit repair using grammar-constrained JSON output.
-
-        Instead of free-text SEARCH/REPLACE blocks that need regex parsing,
-        this uses Ollama's structured output (format=schema) to guarantee
-        100% well-formed JSON edit blocks. Falls through to None if the
-        model or provider doesn't support structured output.
-
-        Returns:
-            List of (search, replace) tuples, or None if structured output unavailable.
-        """
-        agent_config = self.config.get_agent("build")
-        client = self._get_llm_client(agent_config.model)
-
-        if agent_config.model.provider != "ollama":
-            return None
-
-        tagged_content = self.hashline_tag(current_content)
-
-        feedback_section = ""
-        if state.edit_feedback:
-            feedback_section = "## Previous Edit Failures\n"
-            for fb in state.edit_feedback[-3:]:
-                feedback_section += f"\n{fb}\n"
-
-        flask_section = ""
-        goal_lower = (state.goal or "").lower()
-        file_lower = filename.lower()
-        if any(kw in goal_lower or kw in file_lower
-               for kw in ['flask', 'api', 'rest api', 'endpoint', 'route', 'jwt', 'auth', 'app.py']):
-            flask_section = f"\n## Flask Reference Patterns\n{FLASK_GOLDEN_SNIPPET}\n"
-
-        messages = [
-            {"role": "system", "content": (
-                "/think\n"  # Enable thinking for repair reasoning
-                "You are the REPAIR agent. Fix specific bugs in code using surgical edits.\n"
-                "Analyze the test failures and produce targeted search/replace edits.\n"
-                "SEARCH text must match the actual file content exactly.\n"
-                "Include 2-3 context lines to make matches unique.\n"
-                "Fix ONLY failing tests. Do NOT modify passing code.\n"
-                "Do NOT rewrite the entire file — minimal, surgical changes only."
-            )},
-            {"role": "user", "content": f"""## Task
-{state.goal}
-
-## Current File: `{filename}` (with line:hash tags)
-```
-{tagged_content}
-```
-
-{source_context}
-{contract_section}
-{flask_section}
-{feedback_section}
-
-## Test Failures to Fix
-```
-{test_output[-2000:]}
-```
-
-Produce JSON with your edits. Each edit has "search" (exact lines from file) and "replace" (corrected lines).
-"""}
-        ]
-
-        try:
-            result = client.chat_structured(messages, schema=EDIT_REPAIR_SCHEMA, temperature=temperature)
-            if not result or "edits" not in result:
-                logger.debug("Structured edit repair returned no edits")
-                return None
-
-            edits = []
-            for edit in result["edits"]:
-                search = edit.get("search", "").strip()
-                replace = edit.get("replace", "").strip()
-                if search:  # Allow empty replace (deletion)
-                    edits.append((search, replace))
-                    reason = edit.get("reason", "")
-                    if reason:
-                        logger.debug(f"  Structured edit: {reason[:80]}")
-
-            if edits:
-                logger.info(f"  📐 Structured repair: {len(edits)} edit(s) from JSON schema")
-            return edits if edits else None
-
-        except Exception as e:
-            logger.debug(f"Structured edit repair failed: {e}")
-            return None
 
     @staticmethod
     def parse_search_replace(model_output: str) -> list:
@@ -3145,14 +2840,6 @@ Produce JSON with your edits. Each edit has "search" (exact lines from file) and
             search_text = search_part.strip('\n\r')
             replace_text = replace_part.strip('\n\r')
 
-            # v1.1: Strip hashline tags if model included them
-            # (Model sees "  3:f1| from flask import g" and copies tags into SEARCH)
-            import re as _re
-            if _re.search(r'^\s*\d+:[0-9a-f]{2}\| ', search_text, _re.MULTILINE):
-                search_text = AgentRunner.strip_hashline_tags(search_text)
-            if _re.search(r'^\s*\d+:[0-9a-f]{2}\| ', replace_text, _re.MULTILINE):
-                replace_text = AgentRunner.strip_hashline_tags(replace_text)
-
             if search_text:  # Don't add empty searches
                 blocks.append((search_text, replace_text))
 
@@ -3169,7 +2856,7 @@ Produce JSON with your edits. Each edit has "search" (exact lines from file) and
         Matching layers (tried in order):
         1. Exact match
         2. Trailing-whitespace-stripped match
-        3. difflib.SequenceMatcher fuzzy match (≥0.78 similarity)
+        3. difflib.SequenceMatcher fuzzy match (≥0.85 similarity)
         4. Content-stripped match (ignore all leading whitespace)
         5. Partial-line match (for single-line edits)
 
@@ -3266,9 +2953,8 @@ Produce JSON with your edits. Each edit has "search" (exact lines from file) and
                         best_ratio = ratio
                         best_start = i
 
-                # Accept if similarity ≥ 0.78 (v1.1: lowered from 0.85 — with tag stripping
-                # and syntax rollback, we can afford to be more permissive)
-                if best_ratio >= 0.78 and best_start >= 0:
+                # Accept if similarity ≥ 0.85 (v0.9.9a: raised from 0.7 — too aggressive)
+                if best_ratio >= 0.85 and best_start >= 0:
                     # v0.9.9b: Preserve relative indentation (not flat)
                     indented_replace = _indent_replace(replace_text, content_lines[best_start])
 
@@ -3316,7 +3002,7 @@ Produce JSON with your edits. Each edit has "search" (exact lines from file) and
                         best_line_ratio = ratio
                         best_line_idx = i
 
-                if best_line_ratio >= 0.78 and best_line_idx >= 0:
+                if best_line_ratio >= 0.85 and best_line_idx >= 0:
                     # v0.9.9b: relative indent for single-line replacement
                     indented_lines = _indent_replace(replace_text, content_lines[best_line_idx])
                     content_lines[best_line_idx:best_line_idx + 1] = indented_lines
@@ -3332,7 +3018,7 @@ Produce JSON with your edits. Each edit has "search" (exact lines from file) and
             if preview_stripped:
                 content_lines = content.split('\n')
                 # Find most similar region using first line
-                best_sim: float = 0.0
+                best_sim = 0
                 best_idx = 0
                 for i, cl in enumerate(content_lines):
                     r = difflib.SequenceMatcher(None, preview_stripped[0], cl.strip()).ratio()
@@ -3484,7 +3170,7 @@ Produce JSON with your edits. Each edit has "search" (exact lines from file) and
                         req = "optional" if has_default else "REQUIRED"
                         lines.append(f"  - {name}: {ftype}  [{req}]")
                     field_names = ', '.join(name for name, _, _ in dc_fields)
-                    lines.append("  ⚠️ Do NOT use 'id', 'payload', 'name', or any other param names.")
+                    lines.append(f"  ⚠️ Do NOT use 'id', 'payload', 'name', or any other param names.")
                     lines.append(f"     Use EXACTLY: {field_names}")
 
             methods = []
@@ -3612,17 +3298,18 @@ If a method takes args, call it with those args: `obj.method(arg1, arg2)`
         if not classes and not functions:
             return ""
 
-        # Detect module type
-        is_storage = any(kw in source_module.lower() for kw in ["storage", "store", "repo", "db"])
-        is_flask = "Flask(" in source_content or "from flask import" in source_content
-        is_cli = not is_flask and any(kw in source_module.lower() for kw in ["cli", "main", "app"])
         # Build import line
         importable_names = [c['name'] for c in classes] + functions
-        import_line = f"from {source_module} import {', '.join(str(n) for n in importable_names)}"
+        import_line = f"from {source_module} import {', '.join(importable_names)}"
 
         # For Flask apps, import the app object — NOT route functions
         if is_flask:
             import_line = f"from {source_module} import app"
+
+        # Detect module type
+        is_storage = any(kw in source_module.lower() for kw in ['storage', 'store', 'repo', 'db'])
+        is_flask = 'Flask(' in source_content or 'from flask import' in source_content
+        is_cli = not is_flask and any(kw in source_module.lower() for kw in ['cli', 'main', 'app'])
 
         # Build the template
         template_lines = [
@@ -3670,7 +3357,7 @@ If a method takes args, call it with those args: `obj.method(arg1, arg2)`
             # Extract method signatures to generate correct test calls
             import re as re_mod
             class_body_match = re_mod.search(
-                rf'^class\s+{re_mod.escape(storage_class)}.*?(?=\nclass\s|\Z)',  # type: ignore[type-var]
+                rf'^class\s+{re_mod.escape(storage_class)}.*?(?=\nclass\s|\Z)',
                 source_content, re_mod.MULTILINE | re_mod.DOTALL
             )
             class_body = class_body_match.group(0) if class_body_match else ""
@@ -3696,36 +3383,36 @@ If a method takes args, call it with those args: `obj.method(arg1, arg2)`
 
             template_lines.extend([
                 "",
-                "    def test_save_and_load_roundtrip(self):",
-                "        with tempfile.TemporaryDirectory() as d:",
-                "            path = Path(d) / 'data.json'",
+                f"    def test_save_and_load_roundtrip(self):",
+                f"        with tempfile.TemporaryDirectory() as d:",
+                f"            path = Path(d) / 'data.json'",
                 f"            store = {storage_class}(path)",
             ])
 
             if has_add_task:
                 # Use add_task method (manages internal state)
                 template_lines.extend([
-                    "            # Use the add_task method to add items (it calls save internally)",
-                    "            # store.add_task(Task(id='1', title='Test', status='pending', created_at=datetime.now().isoformat()))",
-                    "            # Then reload and verify:",
+                    f"            # Use the add_task method to add items (it calls save internally)",
+                    f"            # store.add_task(Task(id='1', title='Test', status='pending', created_at=datetime.now().isoformat()))",
+                    f"            # Then reload and verify:",
                     f"            # store2 = {storage_class}(path)",
-                    "            # self.assertEqual(len(store2.tasks), 1)",
-                    "            pass  # Replace with actual test logic",
+                    f"            # self.assertEqual(len(store2.tasks), 1)",
+                    f"            pass  # Replace with actual test logic",
                 ])
             elif save_takes_args:
                 # save_tasks takes a list argument
                 template_lines.extend([
-                    "            # save_tasks takes a list argument:",
-                    "            # store.save_tasks([task1, task2])",
-                    "            pass  # Replace with actual test logic",
+                    f"            # save_tasks takes a list argument:",
+                    f"            # store.save_tasks([task1, task2])",
+                    f"            pass  # Replace with actual test logic",
                 ])
             else:
                 # save_tasks uses self.tasks (no args)
                 template_lines.extend([
-                    "            # save_tasks() uses internal self.tasks — NO arguments:",
-                    "            # store.tasks.append(task)",
-                    "            # store.save_tasks()  # <-- NO args!",
-                    "            pass  # Replace with actual test logic",
+                    f"            # save_tasks() uses internal self.tasks — NO arguments:",
+                    f"            # store.tasks.append(task)",
+                    f"            # store.save_tasks()  # <-- NO args!",
+                    f"            pass  # Replace with actual test logic",
                 ])
         elif is_flask:
             # v0.7.4: Flask test template — uses test_client, NEVER calls routes directly
@@ -3739,12 +3426,12 @@ If a method takes args, call it with those args: `obj.method(arg1, arg2)`
 
             template_lines.extend([
                 "",
-                "    def setUp(self):",
-                "        app.config['TESTING'] = True",
-                "        self.client = app.test_client()",
-                "        # Set up test database if needed:",
-                "        # with tempfile.TemporaryDirectory() as d:",
-                "        #     app.config['DATABASE_PATH'] = Path(d) / 'test.db'",
+                f"    def setUp(self):",
+                f"        app.config['TESTING'] = True",
+                f"        self.client = app.test_client()",
+                f"        # Set up test database if needed:",
+                f"        # with tempfile.TemporaryDirectory() as d:",
+                f"        #     app.config['DATABASE_PATH'] = Path(d) / 'test.db'",
             ])
 
             if routes:
@@ -3762,59 +3449,59 @@ If a method takes args, call it with those args: `obj.method(arg1, arg2)`
                                 "",
                                 f"    def test_{method_lower}_{test_name}(self):",
                                 f"        response = self.client.post('{route_path}', json={{",
-                                "            # Add required fields here",
-                                "        })",
-                                "        self.assertIn(response.status_code, [200, 201])",
-                                "        data = response.get_json()",
-                                "        self.assertIsNotNone(data)",
+                                f"            # Add required fields here",
+                                f"        }})",
+                                f"        self.assertIn(response.status_code, [200, 201])",
+                                f"        data = response.get_json()",
+                                f"        self.assertIsNotNone(data)",
                             ])
                         elif method_lower == 'get':
                             template_lines.extend([
                                 "",
                                 f"    def test_{method_lower}_{test_name}(self):",
                                 f"        response = self.client.get('{route_path}')",
-                                "        self.assertEqual(response.status_code, 200)",
-                                "        data = response.get_json()",
-                                "        self.assertIsNotNone(data)",
+                                f"        self.assertEqual(response.status_code, 200)",
+                                f"        data = response.get_json()",
+                                f"        self.assertIsNotNone(data)",
                             ])
                         elif method_lower == 'delete':
                             template_lines.extend([
                                 "",
                                 f"    def test_{method_lower}_{test_name}(self):",
-                                "        # First create an item, then delete it",
+                                f"        # First create an item, then delete it",
                                 f"        response = self.client.delete('{route_path}')",
-                                "        self.assertIn(response.status_code, [200, 204])",
+                                f"        self.assertIn(response.status_code, [200, 204])",
                             ])
             else:
                 # No routes found, give generic Flask test scaffold
                 template_lines.extend([
                     "",
-                    "    def test_health(self):",
-                    "        response = self.client.get('/')",
-                    "        self.assertEqual(response.status_code, 200)",
+                    f"    def test_health(self):",
+                    f"        response = self.client.get('/')",
+                    f"        self.assertEqual(response.status_code, 200)",
                 ])
 
         elif is_cli and 'main' in functions:
             # CLI test template with injectable main()
             template_lines.extend([
                 "",
-                "    def test_cli_add(self):",
-                "        with tempfile.TemporaryDirectory() as d:",
-                "            path = Path(d) / 'data.json'",
-                "            # TODO: Call main() with injectable argv and storage",
-                "            # main(argv=['add', 'Test Item'], storage=TempStorage(path))",
-                "            pass  # Replace with actual test call",
+                f"    def test_cli_add(self):",
+                f"        with tempfile.TemporaryDirectory() as d:",
+                f"            path = Path(d) / 'data.json'",
+                f"            # TODO: Call main() with injectable argv and storage",
+                f"            # main(argv=['add', 'Test Item'], storage=TempStorage(path))",
+                f"            pass  # Replace with actual test call",
             ])
         else:
             # Generic test template
             for cls in classes[:2]:
                 template_lines.extend([
                     "",
-                    f"    def test_{cls['name'].lower()}_creation(self):",  # type: ignore[union-attr]
+                    f"    def test_{cls['name'].lower()}_creation(self):",
                 ])
                 if cls['init_params']:
                     param_strs = []
-                    for name, ptype in cls['init_params'][:4]:  # type: ignore[misc, index]
+                    for name, ptype in cls['init_params'][:4]:
                         if ptype in ('str', 'String'):
                             param_strs.append(f"{name}='test'")
                         elif ptype in ('int', 'Integer', 'float'):
@@ -3825,17 +3512,17 @@ If a method takes args, call it with those args: `obj.method(arg1, arg2)`
                             param_strs.append(f"{name}='test'")
                     params = ', '.join(param_strs)
                     template_lines.append(f"        obj = {cls['name']}({params})")
-                    template_lines.append("        self.assertIsNotNone(obj)")
+                    template_lines.append(f"        self.assertIsNotNone(obj)")
                 else:
                     template_lines.append(f"        obj = {cls['name']}()")
-                    template_lines.append("        self.assertIsNotNone(obj)")
+                    template_lines.append(f"        self.assertIsNotNone(obj)")
 
             for func in functions[:3]:
                 template_lines.extend([
                     "",
                     f"    def test_{func}(self):",
                     f"        # TODO: Call {func}() with appropriate args",
-                    "        pass  # Replace with actual test",
+                    f"        pass  # Replace with actual test",
                 ])
 
         template_lines.extend([
@@ -4316,7 +4003,7 @@ Perform a 5 Whys analysis. What is the SPECIFIC root cause? What SPECIFIC change
                 all_evidence.append(f"{cid}: BLOCKED — syntax error in {', '.join(syntax_errors.keys())}")
 
             output = f"SYNTAX ERRORS FOUND — all criteria blocked:\n{error_summary}"
-            output += "\n\nDOD VERIFICATION FAILED\nFailed: all (source files have syntax errors)"
+            output += f"\n\nDOD VERIFICATION FAILED\nFailed: all (source files have syntax errors)"
 
             return AgentResult(
                 success=False,
@@ -4340,7 +4027,7 @@ Perform a 5 Whys analysis. What is the SPECIFIC root cause? What SPECIFIC change
                         for i, c in enumerate(state.dod.criteria)
                     ],
                 },
-                dod_results=test_report,  # type: ignore[arg-type]
+                dod_results=test_report,
             )
 
         # -- Step 2: v0.7.4 — Run ALL tests with proper isolation --
@@ -4397,7 +4084,7 @@ Perform a 5 Whys analysis. What is the SPECIFIC root cause? What SPECIFIC change
             tests_passed = all_tests_pass
             test_result_output = "\n".join(combined_output)
         else:
-            test_command = "python3 -m unittest discover -s . -p 'test_*.py' -v"
+            test_command = f"python3 -m unittest discover -s . -p 'test_*.py' -v"
             test_result_output = self.tool_executor.execute(
                 "run_command", {"command": test_command, "timeout": 120}
             )
@@ -4416,7 +4103,7 @@ Perform a 5 Whys analysis. What is the SPECIFIC root cause? What SPECIFIC change
         # Inspired by SWE-bench: "tests pass" IS the verification — no separate DoD layer.
         individual_tests = {}  # {"test_create_project": True, "test_delete_task": False}
         for tf_name, tf_result in per_file_results.items():
-            output: str = str(tf_result.get("output", ""))  # type: ignore[no-redef]
+            output = tf_result.get("output", "")
             # Parse pytest -v output: "test_app.py::test_create_project PASSED"
             for match in re_mod.finditer(r'(\w+::|^)(test_\w+)\s+(PASSED|FAILED|ERROR)', output, re_mod.MULTILINE):
                 func_name = match.group(2)
@@ -4441,7 +4128,7 @@ Perform a 5 Whys analysis. What is the SPECIFIC root cause? What SPECIFIC change
         #   4. Default: proportional to individual test results (NOT binary all-or-nothing)
         test_report = {}
         all_evidence = []
-        unmapped_criteria_indices: list[int] = []  # Track criteria that don't match anything specific
+        unmapped_criteria_indices = []  # Track criteria that don't match anything specific
 
         for idx, criterion in enumerate(state.dod.criteria):
             cid = f"criterion-{idx}"
@@ -4472,16 +4159,16 @@ Perform a 5 Whys analysis. What is the SPECIFIC root cause? What SPECIFIC change
                         matched_file = tf.name
                         break
                 if matched_file and matched_file in per_file_results:
-                    file_result = per_file_results[matched_file]  # type: ignore[assignment]
-                    criterion.passed = bool(file_result["passed"])  # type: ignore[index]
-                    criterion.evidence = str(file_result["output"])[:500]  # type: ignore[index]
+                    file_result = per_file_results[matched_file]
+                    criterion.passed = file_result["passed"]
+                    criterion.evidence = file_result["output"][:500]
                     test_report[cid] = {"passed": criterion.passed, "evidence": criterion.evidence, "command": f"pytest {matched_file}"}
                     if criterion.passed:
                         logger.info(f"DoD {cid} PASSED: {criterion.description[:60]}")
                         all_evidence.append(f"{cid}: PASSED -- {matched_file} tests pass")
                     else:
                         logger.warning(f"DoD {cid} FAILED: {criterion.description[:60]}")
-                        fail_tail = self._extract_test_error_tail(str(file_result['output']))  # type: ignore[index]
+                        fail_tail = self._extract_test_error_tail(file_result['output'])
                         all_evidence.append(f"{cid}: FAILED -- {matched_file}: {fail_tail}")
                     was_mapped = True
 
@@ -4585,7 +4272,6 @@ Perform a 5 Whys analysis. What is the SPECIFIC root cause? What SPECIFIC change
             passed_count = total_count
 
         # -- Step 4: Build structured test report with workspace info --
-        criteria_results: list[dict] = []
         structured_report = {
             "overall_passed": success,
             "passed_count": passed_count,
@@ -4596,12 +4282,12 @@ Perform a 5 Whys analysis. What is the SPECIFIC root cause? What SPECIFIC change
                 "valid_test_files": [f.name for f in valid_test_files],
                 "stale_test_files": [f.name for f in test_files if f not in valid_test_files],
             },
-            "criteria_results": criteria_results,
+            "criteria_results": [],
         }
         for idx, criterion in enumerate(state.dod.criteria):
             cid = f"criterion-{idx}"
-            report_entry: dict = test_report.get(cid, {})  # type: ignore[assignment]
-            criteria_results.append({
+            report_entry = test_report.get(cid, {})
+            structured_report["criteria_results"].append({
                 "criterion_id": cid,
                 "description": criterion.description,
                 "passed": criterion.passed,
@@ -4622,7 +4308,7 @@ Perform a 5 Whys analysis. What is the SPECIFIC root cause? What SPECIFIC change
             output=output,
             error=None if success else f"{passed_count}/{total_count} DoD criteria passed",
             test_report=structured_report,
-            dod_results=test_report,  # type: ignore[arg-type]
+            dod_results=test_report,
         )
 
     def _generate_post_build_commands(

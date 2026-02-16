@@ -1,4 +1,4 @@
-# Core (only external dependency)
+# Core
 httpx>=0.24.0,<1.0
 
 # Required in task venvs (installed by orchestrator for benchmark tasks)

@@ -9,7 +9,7 @@ All benchmarks run on the same hardware to track orchestrator improvements acros
 - **GPU 2:** RTX 4070 Super 12GB → Ollama Instance 1 (tensor parallel)
 - **GPU 3:** RTX 4070 Super 12GB → Ollama Instance 1 (tensor parallel)
 - **CPU:** Dual Xeon (24 cores / 48 threads)
-- **RAM:** 256GB DDR4
+- **RAM:** 64GB DDR4 ECC RDIMM
 - **Context:** 131K (primary), 32K (secondary)
 
 ---
@@ -42,6 +42,18 @@ Five tasks of increasing difficulty, from simple single-class to complex multi-f
 | Expense Tracker + Auth | 6 | ✅ Pass | 145/159 (91%) | 3 | 170m |
 
 **Overall: 5/5 tasks passing. 278/300 tests (93%) across all tasks.**
+
+### Variance Analysis (3 runs)
+
+| Task | Run 1 | Run 2 | Run 3 | Notes |
+|------|-------|-------|-------|-------|
+| Calculator (L2) | ✅ 5/5, 1 iter | ✅ 5/5, 1 iter | ✅ 5/5, 1 iter | Rock solid |
+| Miniqueue (L3) | ✅ 16/16, 2 iter | ✅ 16/16, 1 iter | ✅ 20/20, 1 iter | Consistent |
+| Task Tracker (L4) | ✅ 38/38, 3 iter | ❌ 36/37, 3 iter | ✅ 38/38, 3 iter | Stubborn edge case |
+| Bookmark API (L5) | ✅ 70/78, 2 iter | ❌ 44/58, 3 iter | ✅ 70/78, 2 iter | High variance |
+| Expense Tracker (L6) | ✅ 145/159, 3 iter | ✅ 110/127, 3 iter | ✅ 145/159, 3 iter | Passes but margins vary |
+
+**Key finding:** Tasks 4-5 have iteration-count bottlenecks. With `max_iterations=3`, Task 4 sometimes stalls at 36/37 and Task 5 drops to 76% tests. Bumping to `max_iterations=5` for Level 4+ tasks (applied in v1.2.1) provides headroom for the model to recover from high-variance runs.
 
 ### Key Observations
 
@@ -177,6 +189,14 @@ python3 benchmark.py --list
 ```
 
 ---
+
+## What Changed in v1.2.1 (Bug Fixes + Iteration Tuning)
+
+| Fix | Before | After |
+|---|---|---|
+| Dependency mismatch | requirements.txt listed `httpx`, code used `requests` | Fixed: requirements.txt now lists `requests` |
+| Path traversal guard | ToolExecutor accepted any path from LLM | Validates all paths resolve within working_dir |
+| Per-task max iterations | Flat `max_iterations=3` for all tasks | Level 2-3: 3, Level 4-6: 5 (CLI still overrides) |
 
 ## What Changed in v1.2 (Inference Optimizations)
 

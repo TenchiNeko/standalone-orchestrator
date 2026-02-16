@@ -34,11 +34,11 @@ That's well within 7B/14B capability.
 import json
 import logging
 import time
-from typing import Optional, List, Dict
-from dataclasses import dataclass, field
+from typing import Optional, List, Dict, Any
+from dataclasses import dataclass, field, asdict
 from pathlib import Path
 
-import requests
+import httpx
 
 from standalone_config import ModelConfig
 from librarian_store import (
@@ -273,7 +273,7 @@ class Librarian:
         self.model_config = model_config
         self.db_path = db_path
         self.kb_server_url = kb_server_url.rstrip("/")
-        self.session = requests.Session()
+        self.session = httpx.Client(timeout=120)
         self.session.headers.update({"Content-Type": "application/json"})
 
         # Ensure librarian tables exist
@@ -492,7 +492,7 @@ class Librarian:
     ) -> Optional[Dict]:
         """
         Call the 7B/14B with structured output.
-
+        
         Uses Ollama's format parameter for deterministic JSON output.
         Falls back gracefully on any failure.
         """
@@ -531,10 +531,10 @@ class Librarian:
         except json.JSONDecodeError as e:
             logger.warning(f"  Librarian: JSON parse error for {task_label}: {e}")
             return None
-        except requests.exceptions.ConnectionError:
+        except httpx.ConnectError:
             logger.warning(f"  Librarian: cannot connect to model at {endpoint}")
             return None
-        except requests.exceptions.Timeout:
+        except httpx.TimeoutException:
             logger.warning(f"  Librarian: timeout for {task_label}")
             return None
         except Exception as e:
@@ -593,11 +593,11 @@ class Librarian:
 def build_session_summary(
     task_state,
     working_dir: Path,
-    memory_records: Optional[list] = None,
+    memory_records: list = None,
 ) -> SessionSummary:
     """
     Build a SessionSummary from the orchestrator's TaskState.
-
+    
     Called by the orchestrator before invoking the librarian.
     Collects all the information the librarian needs to curate.
     """

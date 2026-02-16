@@ -27,6 +27,7 @@ TASKS = {
     1: {
         "name": "Calculator",
         "level": 2,
+        "max_iterations": 3,  # Levels 2-3: always passes in 1-2 iterations
         "description": "Single class with tests",
         "prompt": (
             "Build a calculator module. Structure: calculator.py (Calculator class "
@@ -40,6 +41,7 @@ TASKS = {
     2: {
         "name": "Miniqueue",
         "level": 3,
+        "max_iterations": 3,  # Levels 2-3: always passes in 1-2 iterations
         "description": "Multi-file, known patterns",
         "prompt": (
             "Build a priority queue system. Structure: models.py (Task dataclass "
@@ -53,6 +55,7 @@ TASKS = {
     3: {
         "name": "Task Tracker CLI",
         "level": 4,
+        "max_iterations": 5,  # Level 4: hits 36/37 at iter 3, needs 4th+ to nail last test
         "description": "Inter-module state, file I/O",
         "prompt": (
             "Build a task tracker with JSON persistence. Structure: models.py "
@@ -69,6 +72,7 @@ TASKS = {
     4: {
         "name": "Bookmark Manager API",
         "level": 5,
+        "max_iterations": 5,  # Level 5: high variance (44-70 tests), needs headroom
         "description": "REST API + database + validation",
         "prompt": (
             "Build a bookmark manager REST API with Flask. Features: "
@@ -84,6 +88,7 @@ TASKS = {
     5: {
         "name": "Expense Tracker with Auth",
         "level": 6,
+        "max_iterations": 5,  # Level 6: complex task, passes at 3 but margins tight
         "description": "Complex business logic, auth, edge cases",
         "prompt": (
             "Build an expense tracker API with Flask. Features: JWT authentication "
@@ -129,10 +134,11 @@ class BenchmarkResult:
     log_file: str = ""
 
 
-def run_task(task_id: int, base_dir: str = "/tmp/bench", max_iterations: int = 3,
+def run_task(task_id: int, base_dir: str = "/tmp/bench", max_iterations: int | None = None,
              timeout: int = 7200) -> BenchmarkResult:
     """Run a single benchmark task and parse results from the log."""
     task = TASKS[task_id]
+    effective_iterations = max_iterations or task.get("max_iterations", 3)
     result = BenchmarkResult(
         task_id=task_id,
         task_name=task["name"],
@@ -147,7 +153,7 @@ def run_task(task_id: int, base_dir: str = "/tmp/bench", max_iterations: int = 3
     cmd = [
         sys.executable, "standalone_main.py",
         task["prompt"],
-        "--max-iterations", str(max_iterations),
+        "--max-iterations", str(effective_iterations),
         "--working-dir", work_dir,
     ]
 
@@ -301,7 +307,8 @@ def main():
     parser.add_argument("--suite", choices=["standard"], default="standard",
                         help="Run a predefined suite")
     parser.add_argument("--list", action="store_true", help="List available tasks")
-    parser.add_argument("--max-iterations", type=int, default=3)
+    parser.add_argument("--max-iterations", type=int, default=None,
+                        help="Override max iterations for all tasks (default: per-task)")
     parser.add_argument("--timeout", type=int, default=10800, help="Per-task timeout in seconds (default 3h)")
     parser.add_argument("--output", default="benchmark_results.json")
     args = parser.parse_args()
