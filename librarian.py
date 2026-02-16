@@ -34,8 +34,8 @@ That's well within 7B/14B capability.
 import json
 import logging
 import time
-from typing import Optional, List, Dict, Any
-from dataclasses import dataclass, field, asdict
+from typing import Optional, List, Dict
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import httpx
@@ -492,7 +492,7 @@ class Librarian:
     ) -> Optional[Dict]:
         """
         Call the 7B/14B with structured output.
-        
+
         Uses Ollama's format parameter for deterministic JSON output.
         Falls back gracefully on any failure.
         """
@@ -597,7 +597,7 @@ def build_session_summary(
 ) -> SessionSummary:
     """
     Build a SessionSummary from the orchestrator's TaskState.
-    
+
     Called by the orchestrator before invoking the librarian.
     Collects all the information the librarian needs to curate.
     """

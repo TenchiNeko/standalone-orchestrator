@@ -24,7 +24,7 @@ from typing import Optional, List, Dict, Any
 import httpx
 
 from standalone_config import Config, AgentConfig, ModelConfig
-from standalone_models import TaskState, AgentResult, DoD, DoDCriterion, IterationResult
+from standalone_models import TaskState, AgentResult, DoD, IterationResult
 from playbook_reader import PlaybookReader
 
 logger = logging.getLogger(__name__)
@@ -921,14 +921,14 @@ class ToolExecutor:
                 f"SYNTAX ERROR in {path} — file was written but has invalid Python syntax.\n"
                 f"Error: {error_msg}\n"
                 f"{context_lines}\n\n"
-                f"⚠️ You MUST fix this syntax error before proceeding.\n"
-                f"Use read_file to see the current content, then use edit_file or "
-                f"write_file to fix the error.\n"
-                f"Common fixes:\n"
-                f"  - @dataclass decorator: must be '@dataclass' on its own line, "
-                f"then 'class ClassName:' on the next line\n"
-                f"  - Missing colons, parentheses, or indentation errors\n"
-                f"  - Unclosed strings or brackets"
+                "⚠️ You MUST fix this syntax error before proceeding.\n"
+                "Use read_file to see the current content, then use edit_file or "
+                "write_file to fix the error.\n"
+                "Common fixes:\n"
+                "  - @dataclass decorator: must be '@dataclass' on its own line, "
+                "then 'class ClassName:' on the next line\n"
+                "  - Missing colons, parentheses, or indentation errors\n"
+                "  - Unclosed strings or brackets"
             )
 
 
@@ -1059,7 +1059,7 @@ class LLMClient:
         except httpx.ConnectError as e:
             raise ConnectionError(f"Cannot connect to Ollama at {endpoint}: {e}")
         except httpx.TimeoutException:
-            raise TimeoutError(f"Ollama request timed out after 900s")
+            raise TimeoutError("Ollama request timed out after 900s")
         except Exception as e:
             raise RuntimeError(f"Ollama API error: {e}")
 
@@ -1371,7 +1371,7 @@ class AgentRunner:
                             success=False,
                             output="\n".join(all_output),
                             error=f"Stuck loop detected at round {round_count}: same tool calls repeated {STUCK_THRESHOLD} times. "
-                                  f"The agent cannot solve this problem with its current approach.",
+                                  "The agent cannot solve this problem with its current approach.",
                             duration_seconds=elapsed,
                         )
 
@@ -1608,7 +1608,7 @@ class AgentRunner:
         if not system_prompt:
             system_prompt = "You are the INITIALIZER agent. Set up the project environment for the given task."
 
-        user_prompt = f"""## Task
+        user_prompt = """## Task
 {goal}
 
 ## Task ID
@@ -1637,8 +1637,6 @@ IMPORTANT:
         This runs before any LLM agent touches the project, so the build
         agent never wastes rounds on 'git init' or 'pip install pytest'.
         """
-        import shutil
-
         wd = self.working_dir
 
         # Git init (if not already a repo)
@@ -1721,7 +1719,7 @@ IMPORTANT:
         if not system_prompt:
             system_prompt = "You are the EXPLORE agent. Gather context about the codebase. READ files, don't modify them."
 
-        user_prompt = f"""## Task
+        user_prompt = """## Task
 {state.goal}
 
 ## Task ID
@@ -1786,7 +1784,7 @@ Focus on what's relevant to the task. Be selective.
                 "into a structured report. Be precise about file paths and patterns. "
                 "Only include files and patterns that actually exist — do not hallucinate."
             )},
-            {"role": "user", "content": f"""## Task
+            {"role": "user", "content": """## Task
 {state.goal}
 
 ## Raw Exploration Output
@@ -1919,7 +1917,7 @@ Include only real file paths and patterns you can see in the output.
             )
             exploration_context = f"\n## Exploration Findings\n{exploration_context}\n"
 
-        user_prompt = f"""## Task
+        user_prompt = """## Task
 {state.goal}
 
 ## Task ID
@@ -2124,7 +2122,7 @@ USE THEM. Do not just describe what you would do — actually do it using the to
             capped_memory = truncate_to_budget(
                 memory_context, BUILD_PROMPT_BUDGET["memory_context"], "memory"
             )
-            history_section = f"""
+            history_section = """
 ## ⚠️ PREVIOUS ITERATION HISTORY — READ THIS CAREFULLY
 {capped_memory}
 You MUST review the failures above and NOT repeat them.
@@ -2173,7 +2171,7 @@ just the broken part.
         else:
             fix_instructions = ""
 
-        user_prompt = f"""## Task
+        user_prompt = """## Task
 {state.goal}
 
 ## Task ID
@@ -2249,7 +2247,7 @@ DO NOT just describe what you would do. ACTUALLY DO IT using the tools.
                 cmd = criterion.verification_command or "Manual inspection required"
                 dod_criteria_list += f"\n### criterion-{idx}: {criterion.description}\nVerification command: `{cmd}`\n"
 
-        user_prompt = f"""## VERIFY EACH CRITERION BY RUNNING COMMANDS
+        user_prompt = """## VERIFY EACH CRITERION BY RUNNING COMMANDS
 
 For EACH criterion below, use run_command to execute the verification command.
 
@@ -2386,7 +2384,7 @@ USE THEM. Do not just describe what you would do — actually do it using the to
             if source_path.exists():
                 try:
                     source_content = source_path.read_text()[:3000]
-                    source_context = f"""
+                    source_context = """
 ## Source Module Being Tested: `{tests_for}`
 ```python
 {source_content}
@@ -2443,13 +2441,13 @@ Read this carefully. Your tests must import from and test the actual classes/fun
                 try:
                     test_content = test_path.read_text()[:3000]
                     tdd_contract = (
-                        f"\n## TDD CONTRACT - Your code MUST pass these tests\n"
-                        f"The following test file is LOCKED. You cannot change it.\n"
-                        f"Your implementation MUST satisfy these tests exactly.\n"
-                        f"Read the method calls carefully - match EXACT signatures.\n\n"
+                        "\n## TDD CONTRACT - Your code MUST pass these tests\n"
+                        "The following test file is LOCKED. You cannot change it.\n"
+                        "Your implementation MUST satisfy these tests exactly.\n"
+                        "Read the method calls carefully - match EXACT signatures.\n\n"
                         f"### `{test_filename}`\n"
                         f"```python\n{test_content}\n```\n\n"
-                        f"CRITICAL: Match the exact method signatures the tests use.\n"
+                        "CRITICAL: Match the exact method signatures the tests use.\n"
                     )
                 except Exception:
                     pass
@@ -2467,7 +2465,7 @@ Read this carefully. Your tests must import from and test the actual classes/fun
                     except Exception:
                         pass
             if deps_lines:
-                deps_context = f"""
+                deps_context = """
 ## Dependency Modules (you MUST import from these correctly)
 {chr(10).join(deps_lines)}
 
@@ -2477,7 +2475,7 @@ Import from these modules as needed. Use the exact class/function names shown ab
         # v0.6.2: Error context from previous failed sampling attempts
         error_section = ""
         if error_context:
-            error_section = f"""
+            error_section = """
 ## ⚠️ PREVIOUS ATTEMPTS FAILED — AVOID THESE MISTAKES
 Multiple previous attempts to write this test file ALL failed with errors.
 Study these errors carefully and write DIFFERENT code that avoids them:
@@ -2499,7 +2497,7 @@ Common fixes:
         if kb_context:
             kb_section = kb_context
 
-        user_prompt = f"""{kb_section}
+        user_prompt = """{kb_section}
 ## Task
 {state.goal}
 
@@ -2588,7 +2586,7 @@ Write the file now using `write_file`, then verify.
             if source_path.exists():
                 try:
                     source_content = source_path.read_text()[:3000]
-                    source_context = f"""
+                    source_context = """
 ## Source Module Being Tested: `{tests_for}`
 ```python
 {source_content}
@@ -2634,13 +2632,13 @@ Read this carefully. Your tests must import from and test the actual classes/fun
                 try:
                     test_content = test_path.read_text()[:3000]
                     tdd_contract = (
-                        f"\n## TDD CONTRACT - Your code MUST pass these tests\n"
-                        f"The following test file is LOCKED. You cannot change it.\n"
-                        f"Your implementation MUST satisfy these tests exactly.\n"
-                        f"Read the method calls carefully - match EXACT signatures.\n\n"
+                        "\n## TDD CONTRACT - Your code MUST pass these tests\n"
+                        "The following test file is LOCKED. You cannot change it.\n"
+                        "Your implementation MUST satisfy these tests exactly.\n"
+                        "Read the method calls carefully - match EXACT signatures.\n\n"
                         f"### `{test_filename}`\n"
                         f"```python\n{test_content}\n```\n\n"
-                        f"CRITICAL: Match the exact method signatures the tests use.\n"
+                        "CRITICAL: Match the exact method signatures the tests use.\n"
                     )
                 except Exception:
                     pass
@@ -2658,7 +2656,7 @@ Read this carefully. Your tests must import from and test the actual classes/fun
                     except Exception:
                         pass
             if deps_lines:
-                deps_context = f"""
+                deps_context = """
 ## Dependency Modules (you MUST import from these correctly)
 {chr(10).join(deps_lines)}
 
@@ -2668,7 +2666,7 @@ Import from these modules as needed. Use the exact class/function names shown ab
         # Error context from previous attempts
         error_section = ""
         if error_context:
-            error_section = f"""
+            error_section = """
 ## PREVIOUS ATTEMPTS FAILED — AVOID THESE MISTAKES
 {error_context[:1500]}
 """
@@ -2705,7 +2703,7 @@ Import from these modules as needed. Use the exact class/function names shown ab
             "- Imports between modules: If A imports B, B must have valid syntax or A fails too.\n"
         )
 
-        user_prompt = f"""{kb_section}
+        user_prompt = """{kb_section}
 ## Task
 {state.goal}
 
@@ -2779,7 +2777,7 @@ Now write the complete `{filename}` between the markers:
                 feedback_section += f"\n{fb}\n"
             feedback_section += "\nFix these matching issues in your new SEARCH blocks.\n"
 
-        user_prompt = f"""## Task
+        user_prompt = """## Task
 {state.goal}
 
 ## Current File: `{filename}` (with line:hash tags)
@@ -3032,10 +3030,10 @@ Produce SEARCH/REPLACE edits to fix the failing tests.
                 nearby = '\n'.join(f"  {j+1}: {content_lines[j]}" for j in range(start, end))
                 fb = (
                     f"SEARCH block failed to match (best similarity: {best_ratio:.0%}).\n"
-                    f"Your SEARCH started with:\n"
+                    "Your SEARCH started with:\n"
                     f"  {preview_stripped[0]}\n"
                     f"Nearest actual lines in file (lines {start+1}-{end}):\n{nearby}\n"
-                    f"The SEARCH must match the file EXACTLY including whitespace."
+                    "The SEARCH must match the file EXACTLY including whitespace."
                 )
                 feedback.append(fb)
 
@@ -3055,7 +3053,7 @@ Produce SEARCH/REPLACE edits to fix the failing tests.
                         feedback.append(
                             f"ROLLBACK: {applied} edits were applied but broke Python syntax. "
                             f"Error: {result.stderr.strip()[:200]}. "
-                            f"All edits reverted. Try smaller, more targeted changes."
+                            "All edits reverted. Try smaller, more targeted changes."
                         )
                         return 0, feedback
                 except Exception:
@@ -3170,7 +3168,7 @@ Produce SEARCH/REPLACE edits to fix the failing tests.
                         req = "optional" if has_default else "REQUIRED"
                         lines.append(f"  - {name}: {ftype}  [{req}]")
                     field_names = ', '.join(name for name, _, _ in dc_fields)
-                    lines.append(f"  ⚠️ Do NOT use 'id', 'payload', 'name', or any other param names.")
+                    lines.append("  ⚠️ Do NOT use 'id', 'payload', 'name', or any other param names.")
                     lines.append(f"     Use EXACTLY: {field_names}")
 
             methods = []
@@ -3222,7 +3220,7 @@ Produce SEARCH/REPLACE edits to fix the failing tests.
             return ""
 
         contract = '\n'.join(lines)
-        return f"""
+        return """
 ## ⚠️ API CONTRACT (from `{source_filename}` — MUST MATCH EXACTLY)
 Your tests MUST call these methods with EXACTLY these signatures.
 Do NOT invent extra parameters or change the calling convention.
@@ -3298,6 +3296,11 @@ If a method takes args, call it with those args: `obj.method(arg1, arg2)`
         if not classes and not functions:
             return ""
 
+        # Detect module type
+        is_storage = any(kw in source_module.lower() for kw in ['storage', 'store', 'repo', 'db'])
+        is_flask = 'Flask(' in source_content or 'from flask import' in source_content
+        is_cli = not is_flask and any(kw in source_module.lower() for kw in ['cli', 'main', 'app'])
+
         # Build import line
         importable_names = [c['name'] for c in classes] + functions
         import_line = f"from {source_module} import {', '.join(importable_names)}"
@@ -3305,11 +3308,6 @@ If a method takes args, call it with those args: `obj.method(arg1, arg2)`
         # For Flask apps, import the app object — NOT route functions
         if is_flask:
             import_line = f"from {source_module} import app"
-
-        # Detect module type
-        is_storage = any(kw in source_module.lower() for kw in ['storage', 'store', 'repo', 'db'])
-        is_flask = 'Flask(' in source_content or 'from flask import' in source_content
-        is_cli = not is_flask and any(kw in source_module.lower() for kw in ['cli', 'main', 'app'])
 
         # Build the template
         template_lines = [
@@ -3383,36 +3381,36 @@ If a method takes args, call it with those args: `obj.method(arg1, arg2)`
 
             template_lines.extend([
                 "",
-                f"    def test_save_and_load_roundtrip(self):",
-                f"        with tempfile.TemporaryDirectory() as d:",
-                f"            path = Path(d) / 'data.json'",
+                "    def test_save_and_load_roundtrip(self):",
+                "        with tempfile.TemporaryDirectory() as d:",
+                "            path = Path(d) / 'data.json'",
                 f"            store = {storage_class}(path)",
             ])
 
             if has_add_task:
                 # Use add_task method (manages internal state)
                 template_lines.extend([
-                    f"            # Use the add_task method to add items (it calls save internally)",
-                    f"            # store.add_task(Task(id='1', title='Test', status='pending', created_at=datetime.now().isoformat()))",
-                    f"            # Then reload and verify:",
+                    "            # Use the add_task method to add items (it calls save internally)",
+                    "            # store.add_task(Task(id='1', title='Test', status='pending', created_at=datetime.now().isoformat()))",
+                    "            # Then reload and verify:",
                     f"            # store2 = {storage_class}(path)",
-                    f"            # self.assertEqual(len(store2.tasks), 1)",
-                    f"            pass  # Replace with actual test logic",
+                    "            # self.assertEqual(len(store2.tasks), 1)",
+                    "            pass  # Replace with actual test logic",
                 ])
             elif save_takes_args:
                 # save_tasks takes a list argument
                 template_lines.extend([
-                    f"            # save_tasks takes a list argument:",
-                    f"            # store.save_tasks([task1, task2])",
-                    f"            pass  # Replace with actual test logic",
+                    "            # save_tasks takes a list argument:",
+                    "            # store.save_tasks([task1, task2])",
+                    "            pass  # Replace with actual test logic",
                 ])
             else:
                 # save_tasks uses self.tasks (no args)
                 template_lines.extend([
-                    f"            # save_tasks() uses internal self.tasks — NO arguments:",
-                    f"            # store.tasks.append(task)",
-                    f"            # store.save_tasks()  # <-- NO args!",
-                    f"            pass  # Replace with actual test logic",
+                    "            # save_tasks() uses internal self.tasks — NO arguments:",
+                    "            # store.tasks.append(task)",
+                    "            # store.save_tasks()  # <-- NO args!",
+                    "            pass  # Replace with actual test logic",
                 ])
         elif is_flask:
             # v0.7.4: Flask test template — uses test_client, NEVER calls routes directly
@@ -3426,12 +3424,12 @@ If a method takes args, call it with those args: `obj.method(arg1, arg2)`
 
             template_lines.extend([
                 "",
-                f"    def setUp(self):",
-                f"        app.config['TESTING'] = True",
-                f"        self.client = app.test_client()",
-                f"        # Set up test database if needed:",
-                f"        # with tempfile.TemporaryDirectory() as d:",
-                f"        #     app.config['DATABASE_PATH'] = Path(d) / 'test.db'",
+                "    def setUp(self):",
+                "        app.config['TESTING'] = True",
+                "        self.client = app.test_client()",
+                "        # Set up test database if needed:",
+                "        # with tempfile.TemporaryDirectory() as d:",
+                "        #     app.config['DATABASE_PATH'] = Path(d) / 'test.db'",
             ])
 
             if routes:
@@ -3449,48 +3447,48 @@ If a method takes args, call it with those args: `obj.method(arg1, arg2)`
                                 "",
                                 f"    def test_{method_lower}_{test_name}(self):",
                                 f"        response = self.client.post('{route_path}', json={{",
-                                f"            # Add required fields here",
-                                f"        }})",
-                                f"        self.assertIn(response.status_code, [200, 201])",
-                                f"        data = response.get_json()",
-                                f"        self.assertIsNotNone(data)",
+                                "            # Add required fields here",
+                                "        }})",
+                                "        self.assertIn(response.status_code, [200, 201])",
+                                "        data = response.get_json()",
+                                "        self.assertIsNotNone(data)",
                             ])
                         elif method_lower == 'get':
                             template_lines.extend([
                                 "",
                                 f"    def test_{method_lower}_{test_name}(self):",
                                 f"        response = self.client.get('{route_path}')",
-                                f"        self.assertEqual(response.status_code, 200)",
-                                f"        data = response.get_json()",
-                                f"        self.assertIsNotNone(data)",
+                                "        self.assertEqual(response.status_code, 200)",
+                                "        data = response.get_json()",
+                                "        self.assertIsNotNone(data)",
                             ])
                         elif method_lower == 'delete':
                             template_lines.extend([
                                 "",
                                 f"    def test_{method_lower}_{test_name}(self):",
-                                f"        # First create an item, then delete it",
+                                "        # First create an item, then delete it",
                                 f"        response = self.client.delete('{route_path}')",
-                                f"        self.assertIn(response.status_code, [200, 204])",
+                                "        self.assertIn(response.status_code, [200, 204])",
                             ])
             else:
                 # No routes found, give generic Flask test scaffold
                 template_lines.extend([
                     "",
-                    f"    def test_health(self):",
-                    f"        response = self.client.get('/')",
-                    f"        self.assertEqual(response.status_code, 200)",
+                    "    def test_health(self):",
+                    "        response = self.client.get('/')",
+                    "        self.assertEqual(response.status_code, 200)",
                 ])
 
         elif is_cli and 'main' in functions:
             # CLI test template with injectable main()
             template_lines.extend([
                 "",
-                f"    def test_cli_add(self):",
-                f"        with tempfile.TemporaryDirectory() as d:",
-                f"            path = Path(d) / 'data.json'",
-                f"            # TODO: Call main() with injectable argv and storage",
-                f"            # main(argv=['add', 'Test Item'], storage=TempStorage(path))",
-                f"            pass  # Replace with actual test call",
+                "    def test_cli_add(self):",
+                "        with tempfile.TemporaryDirectory() as d:",
+                "            path = Path(d) / 'data.json'",
+                "            # TODO: Call main() with injectable argv and storage",
+                "            # main(argv=['add', 'Test Item'], storage=TempStorage(path))",
+                "            pass  # Replace with actual test call",
             ])
         else:
             # Generic test template
@@ -3512,17 +3510,17 @@ If a method takes args, call it with those args: `obj.method(arg1, arg2)`
                             param_strs.append(f"{name}='test'")
                     params = ', '.join(param_strs)
                     template_lines.append(f"        obj = {cls['name']}({params})")
-                    template_lines.append(f"        self.assertIsNotNone(obj)")
+                    template_lines.append("        self.assertIsNotNone(obj)")
                 else:
                     template_lines.append(f"        obj = {cls['name']}()")
-                    template_lines.append(f"        self.assertIsNotNone(obj)")
+                    template_lines.append("        self.assertIsNotNone(obj)")
 
             for func in functions[:3]:
                 template_lines.extend([
                     "",
                     f"    def test_{func}(self):",
                     f"        # TODO: Call {func}() with appropriate args",
-                    f"        pass  # Replace with actual test",
+                    "        pass  # Replace with actual test",
                 ])
 
         template_lines.extend([
@@ -3534,7 +3532,7 @@ If a method takes args, call it with those args: `obj.method(arg1, arg2)`
 
         template_code = '\n'.join(template_lines)
 
-        return f"""
+        return """
 ## 📋 TEST TEMPLATE (START FROM THIS — DO NOT IGNORE)
 The following template has been generated from the actual source module `{source_filename}`.
 It has correct imports and class names. **Start from this template** and flesh out the
@@ -3668,7 +3666,7 @@ from scratch — they are already correct.
             budget["failure_history"], "failure history"
         )
 
-        user_content = f"""## Task
+        user_content = """## Task
 {state.goal}
 
 ## Iteration {state.iteration} FAILED
@@ -3786,7 +3784,7 @@ Perform a 5 Whys analysis. What is the SPECIFIC root cause? What SPECIFIC change
         # 2. Git diff (what the build agent changed)
         try:
             diff_result = subprocess.run(
-                ["git", "diff", "HEAD~1", "--stat"],
+                ["git", "dif", "HEAD~1", "--stat"],
                 cwd=self.working_dir, capture_output=True, text=True, timeout=10
             )
             if diff_result.returncode == 0 and diff_result.stdout.strip():
@@ -3799,7 +3797,7 @@ Perform a 5 Whys analysis. What is the SPECIFIC root cause? What SPECIFIC change
             # Actual diff content — most valuable for RCA but also biggest
             if total_chars < budget["total"] - 500:
                 diff_content = subprocess.run(
-                    ["git", "diff", "HEAD~1", "--", "*.py"],
+                    ["git", "dif", "HEAD~1", "--", "*.py"],
                     cwd=self.working_dir, capture_output=True, text=True, timeout=10
                 )
                 if diff_content.returncode == 0 and diff_content.stdout.strip():
@@ -3983,7 +3981,7 @@ Perform a 5 Whys analysis. What is the SPECIFIC root cause? What SPECIFIC change
         if syntax_errors:
             # Fast-fail: source files have syntax errors, no point running tests
             logger.warning(f"  {len(syntax_errors)} source file(s) have syntax errors — "
-                          f"tests will fail on import. Reporting syntax errors directly.")
+                          "tests will fail on import. Reporting syntax errors directly.")
 
             test_report = {}
             all_evidence = []
@@ -4003,7 +4001,7 @@ Perform a 5 Whys analysis. What is the SPECIFIC root cause? What SPECIFIC change
                 all_evidence.append(f"{cid}: BLOCKED — syntax error in {', '.join(syntax_errors.keys())}")
 
             output = f"SYNTAX ERRORS FOUND — all criteria blocked:\n{error_summary}"
-            output += f"\n\nDOD VERIFICATION FAILED\nFailed: all (source files have syntax errors)"
+            output += "\n\nDOD VERIFICATION FAILED\nFailed: all (source files have syntax errors)"
 
             return AgentResult(
                 success=False,
@@ -4084,7 +4082,7 @@ Perform a 5 Whys analysis. What is the SPECIFIC root cause? What SPECIFIC change
             tests_passed = all_tests_pass
             test_result_output = "\n".join(combined_output)
         else:
-            test_command = f"python3 -m unittest discover -s . -p 'test_*.py' -v"
+            test_command = "python3 -m unittest discover -s . -p 'test_*.py' -v"
             test_result_output = self.tool_executor.execute(
                 "run_command", {"command": test_command, "timeout": 120}
             )
@@ -4194,9 +4192,9 @@ Perform a 5 Whys analysis. What is the SPECIFIC root cause? What SPECIFIC change
             if individual_tests:
                 # Extract meaningful words from criterion (skip common words)
                 skip_words = {'the', 'a', 'an', 'is', 'are', 'has', 'have', 'can', 'should',
-                              'must', 'will', 'be', 'to', 'of', 'in', 'for', 'with', 'and',
+                              'must', 'will', 'be', 'to', 'o', 'in', 'for', 'with', 'and',
                               'or', 'not', 'all', 'each', 'that', 'this', 'it', 'on', 'at',
-                              'by', 'from', 'as', 'when', 'if', 'no', 'any', 'only', 'test',
+                              'by', 'from', 'as', 'when', 'i', 'no', 'any', 'only', 'test',
                               'correctly', 'properly', 'successfully', 'valid', 'returns',
                               'return', 'field', 'fields', 'using', 'via', 'endpoint'}
                 desc_words = set(re_mod.findall(r'[a-z_]+', desc_lower)) - skip_words
