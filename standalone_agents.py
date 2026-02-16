@@ -3521,7 +3521,8 @@ If a method takes args, call it with those args: `obj.method(arg1, arg2)`
                 ])
                 if cls_params:
                     param_strs = []
-                    for name, ptype in cls_params[:4]:
+                    for param in cls_params[:4]:
+                        name, ptype = str(param[0]), str(param[1])  # type: ignore[index]
                         if ptype in ('str', 'String'):
                             param_strs.append(f"{name}='test'")
                         elif ptype in ('int', 'Integer', 'float'):
@@ -4047,7 +4048,7 @@ Perform a 5 Whys analysis. What is the SPECIFIC root cause? What SPECIFIC change
                         for i, c in enumerate(state.dod.criteria)
                     ],
                 },
-                dod_results=test_report,
+                dod_results=test_report,  # type: ignore[arg-type]
             )
 
         # -- Step 2: v0.7.4 — Run ALL tests with proper isolation --
@@ -4330,7 +4331,7 @@ Perform a 5 Whys analysis. What is the SPECIFIC root cause? What SPECIFIC change
             output=output,
             error=None if success else f"{passed_count}/{total_count} DoD criteria passed",
             test_report=structured_report,
-            dod_results=test_report,
+            dod_results=test_report,  # type: ignore[arg-type]
         )
 
     def _generate_post_build_commands(
