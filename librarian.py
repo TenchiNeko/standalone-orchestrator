@@ -593,7 +593,7 @@ class Librarian:
 def build_session_summary(
     task_state,
     working_dir: Path,
-    memory_records: list = None,
+    memory_records: Optional[list] = None,
 ) -> SessionSummary:
     """
     Build a SessionSummary from the orchestrator's TaskState.

@@ -1332,7 +1332,7 @@ class AgentRunner:
                     if agent_config.model.provider == "anthropic":
                         messages.append({
                             "role": "user",
-                            "content": [{
+                            "content": [{  # type: ignore[dict-item]
                                 "type": "tool_result",
                                 "tool_use_id": tc.get("id", ""),
                                 "content": tool_result
@@ -2813,6 +2813,9 @@ Produce SEARCH/REPLACE edits to fix the failing tests.
             tools=None, temperature=temperature
         )
 
+    # Alias for orchestrator compatibility
+    run_edit_repair_structured = run_edit_repair
+
     @staticmethod
     def parse_search_replace(model_output: str) -> list:
         """
@@ -3016,8 +3019,8 @@ Produce SEARCH/REPLACE edits to fix the failing tests.
             if preview_stripped:
                 content_lines = content.split('\n')
                 # Find most similar region using first line
-                best_sim = 0
-                best_idx = 0
+                best_sim: float = 0.0
+                best_idx: int = 0
                 for i, cl in enumerate(content_lines):
                     r = difflib.SequenceMatcher(None, preview_stripped[0], cl.strip()).ratio()
                     if r > best_sim:
@@ -3303,7 +3306,7 @@ If a method takes args, call it with those args: `obj.method(arg1, arg2)`
 
         # Build import line
         importable_names = [c['name'] for c in classes] + functions
-        import_line = f"from {source_module} import {', '.join(importable_names)}"
+        import_line = f"from {source_module} import {', '.join(importable_names)}"  # type: ignore[arg-type]
 
         # For Flask apps, import the app object — NOT route functions
         if is_flask:
@@ -3350,12 +3353,12 @@ If a method takes args, call it with those args: `obj.method(arg1, arg2)`
 
         if is_storage and classes:
             # v0.7.4: Storage test template — API-aware using actual method signatures
-            storage_class = classes[0]['name']
+            storage_class = str(classes[0]['name'])
 
             # Extract method signatures to generate correct test calls
             import re as re_mod
             class_body_match = re_mod.search(
-                rf'^class\s+{re_mod.escape(storage_class)}.*?(?=\nclass\s|\Z)',
+                rf'^class\s+{re_mod.escape(storage_class)}.*?(?=\nclass\s|\Z)',  # type: ignore[type-var]
                 source_content, re_mod.MULTILINE | re_mod.DOTALL
             )
             class_body = class_body_match.group(0) if class_body_match else ""
@@ -3493,13 +3496,15 @@ If a method takes args, call it with those args: `obj.method(arg1, arg2)`
         else:
             # Generic test template
             for cls in classes[:2]:
+                cls_name: str = str(cls['name'])
+                init_params: list[tuple[str, str]] = cls.get('init_params', []) or []  # type: ignore[assignment]
                 template_lines.extend([
                     "",
-                    f"    def test_{cls['name'].lower()}_creation(self):",
+                    f"    def test_{cls_name.lower()}_creation(self):",
                 ])
-                if cls['init_params']:
+                if init_params:
                     param_strs = []
-                    for name, ptype in cls['init_params'][:4]:
+                    for name, ptype in init_params[:4]:
                         if ptype in ('str', 'String'):
                             param_strs.append(f"{name}='test'")
                         elif ptype in ('int', 'Integer', 'float'):
@@ -3509,10 +3514,10 @@ If a method takes args, call it with those args: `obj.method(arg1, arg2)`
                         else:
                             param_strs.append(f"{name}='test'")
                     params = ', '.join(param_strs)
-                    template_lines.append(f"        obj = {cls['name']}({params})")
+                    template_lines.append(f"        obj = {cls_name}({params})")
                     template_lines.append("        self.assertIsNotNone(obj)")
                 else:
-                    template_lines.append(f"        obj = {cls['name']}()")
+                    template_lines.append(f"        obj = {cls_name}()")
                     template_lines.append("        self.assertIsNotNone(obj)")
 
             for func in functions[:3]:
@@ -3983,8 +3988,8 @@ Perform a 5 Whys analysis. What is the SPECIFIC root cause? What SPECIFIC change
             logger.warning(f"  {len(syntax_errors)} source file(s) have syntax errors — "
                           "tests will fail on import. Reporting syntax errors directly.")
 
-            test_report = {}
-            all_evidence = []
+            test_report: Dict[str, Dict[str, Any]] = {}
+            all_evidence: list[str] = []
             error_summary = "\n".join(
                 f"  {name}: {err[:200]}" for name, err in syntax_errors.items()
             )
@@ -4025,7 +4030,7 @@ Perform a 5 Whys analysis. What is the SPECIFIC root cause? What SPECIFIC change
                         for i, c in enumerate(state.dod.criteria)
                     ],
                 },
-                dod_results=test_report,
+                dod_results=test_report,  # type: ignore[arg-type]
             )
 
         # -- Step 2: v0.7.4 — Run ALL tests with proper isolation --
@@ -4045,7 +4050,7 @@ Perform a 5 Whys analysis. What is the SPECIFIC root cause? What SPECIFIC change
         # Fix: clean test artifacts before each test file to ensure clean slate.
 
         if valid_test_files:
-            per_file_results = {}
+            per_file_results: Dict[str, Dict[str, Any]] = {}
             all_tests_pass = True
             combined_output = []
 
@@ -4087,7 +4092,7 @@ Perform a 5 Whys analysis. What is the SPECIFIC root cause? What SPECIFIC change
                 "run_command", {"command": test_command, "timeout": 120}
             )
             tests_passed = "EXIT_CODE: 0" in test_result_output
-            per_file_results = {}
+            per_file_results: Dict[str, Dict[str, Any]] = {}
 
         # Parse aggregate counts
         import re as re_mod
@@ -4099,9 +4104,9 @@ Perform a 5 Whys analysis. What is the SPECIFIC root cause? What SPECIFIC change
         # v0.8.4: Parse individual test function results from pytest -v output
         # This enables granular criteria mapping instead of binary all-or-nothing.
         # Inspired by SWE-bench: "tests pass" IS the verification — no separate DoD layer.
-        individual_tests = {}  # {"test_create_project": True, "test_delete_task": False}
+        individual_tests: Dict[str, bool] = {}  # {"test_create_project": True, "test_delete_task": False}
         for tf_name, tf_result in per_file_results.items():
-            output = tf_result.get("output", "")
+            output: str = str(tf_result.get("output", ""))
             # Parse pytest -v output: "test_app.py::test_create_project PASSED"
             for match in re_mod.finditer(r'(\w+::|^)(test_\w+)\s+(PASSED|FAILED|ERROR)', output, re_mod.MULTILINE):
                 func_name = match.group(2)
@@ -4124,9 +4129,9 @@ Perform a 5 Whys analysis. What is the SPECIFIC root cause? What SPECIFIC change
         #   2. Test file name matching (criterion mentions "test_app")
         #   3. Test FUNCTION matching (criterion text overlaps with test function names)
         #   4. Default: proportional to individual test results (NOT binary all-or-nothing)
-        test_report = {}
-        all_evidence = []
-        unmapped_criteria_indices = []  # Track criteria that don't match anything specific
+        test_report: Dict[str, Dict[str, Any]] = {}
+        all_evidence: list[str] = []
+        unmapped_criteria_indices: list[int] = []  # Track criteria that don't match anything specific
 
         for idx, criterion in enumerate(state.dod.criteria):
             cid = f"criterion-{idx}"
@@ -4158,15 +4163,15 @@ Perform a 5 Whys analysis. What is the SPECIFIC root cause? What SPECIFIC change
                         break
                 if matched_file and matched_file in per_file_results:
                     file_result = per_file_results[matched_file]
-                    criterion.passed = file_result["passed"]
-                    criterion.evidence = file_result["output"][:500]
+                    criterion.passed = bool(file_result["passed"])
+                    criterion.evidence = str(file_result.get("output", ""))[:500]
                     test_report[cid] = {"passed": criterion.passed, "evidence": criterion.evidence, "command": f"pytest {matched_file}"}
                     if criterion.passed:
                         logger.info(f"DoD {cid} PASSED: {criterion.description[:60]}")
                         all_evidence.append(f"{cid}: PASSED -- {matched_file} tests pass")
                     else:
                         logger.warning(f"DoD {cid} FAILED: {criterion.description[:60]}")
-                        fail_tail = self._extract_test_error_tail(file_result['output'])
+                        fail_tail = self._extract_test_error_tail(str(file_result.get('output', '')))
                         all_evidence.append(f"{cid}: FAILED -- {matched_file}: {fail_tail}")
                     was_mapped = True
 
@@ -4270,7 +4275,7 @@ Perform a 5 Whys analysis. What is the SPECIFIC root cause? What SPECIFIC change
             passed_count = total_count
 
         # -- Step 4: Build structured test report with workspace info --
-        structured_report = {
+        structured_report: Dict[str, Any] = {
             "overall_passed": success,
             "passed_count": passed_count,
             "total_count": total_count,
@@ -4285,13 +4290,14 @@ Perform a 5 Whys analysis. What is the SPECIFIC root cause? What SPECIFIC change
         for idx, criterion in enumerate(state.dod.criteria):
             cid = f"criterion-{idx}"
             report_entry = test_report.get(cid, {})
+            evidence_str = str(report_entry.get("evidence", ""))
             structured_report["criteria_results"].append({
                 "criterion_id": cid,
                 "description": criterion.description,
                 "passed": criterion.passed,
                 "command_run": report_entry.get("command", "none"),
-                "evidence": report_entry.get("evidence", "")[:300],
-                "failure_reason": "" if criterion.passed else self._extract_failure_reason(report_entry.get("evidence", "")),
+                "evidence": evidence_str[:300],
+                "failure_reason": "" if criterion.passed else self._extract_failure_reason(evidence_str),
             })
 
         output = "\n".join(all_evidence)
@@ -4306,7 +4312,7 @@ Perform a 5 Whys analysis. What is the SPECIFIC root cause? What SPECIFIC change
             output=output,
             error=None if success else f"{passed_count}/{total_count} DoD criteria passed",
             test_report=structured_report,
-            dod_results=test_report,
+            dod_results=test_report,  # type: ignore[arg-type]
         )
 
     def _generate_post_build_commands(
