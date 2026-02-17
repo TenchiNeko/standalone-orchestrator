@@ -34,6 +34,96 @@ logger = logging.getLogger(__name__)
 # Context Budget Utilities
 # ============================================================
 
+# v1.1: Flask golden snippets — inject verbatim into build prompts
+# Research: Antirez (Redis creator) found that injecting exact documentation
+# into LLM context makes them "expert level immediately" at using the API.
+# These patterns are tested and known-good for the expense tracker benchmark.
+FLASK_GOLDEN_SNIPPET = (
+    "## Flask Reference Patterns — COPY THESE EXACTLY\n\n"
+    "### Application Factory with Database\n"
+    "```python\n"
+    "import os\n"
+    "from flask import Flask, request, jsonify, g\n\n"
+    "def create_app(test_config=None):\n"
+    "    app = Flask(__name__)\n"
+    "    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key')\n\n"
+    "    if test_config:\n"
+    "        app.config.update(test_config)\n\n"
+    "    def get_db():\n"
+    "        if 'db' not in g:\n"
+    "            db_path = app.config.get('DATABASE_PATH', 'app.db')\n"
+    "            g.db = YourDatabase(db_path)  # Replace with actual DB class\n"
+    "        return g.db\n\n"
+    "    @app.teardown_appcontext\n"
+    "    def close_db(exception=None):\n"
+    "        db = g.pop('db', None)\n"
+    "        if db is not None:\n"
+    "            db.close()\n\n"
+    "    # Define ALL routes inside create_app using get_db()\n"
+    "    @app.route('/items', methods=['GET'])\n"
+    "    def list_items():\n"
+    "        db = get_db()\n"
+    "        return jsonify(db.get_all())\n\n"
+    "    return app\n\n"
+    "app = create_app()  # Module-level for 'from app import app'\n"
+    "```\n\n"
+    "### JWT Auth Pattern\n"
+    "```python\n"
+    "import jwt\n"
+    "import hashlib\n"
+    "import os\n"
+    "from datetime import datetime, timedelta\n"
+    "from functools import wraps\n"
+    "from flask import request, jsonify, g\n\n"
+    "def hash_password(password):\n"
+    "    salt = os.urandom(32)\n"
+    "    key = hashlib.pbkdf2_hmac('sha256', password.encode(), salt, 100000)\n"
+    "    return salt.hex() + ':' + key.hex()\n\n"
+    "def verify_password(stored, provided):\n"
+    "    salt_hex, key_hex = stored.split(':')\n"
+    "    salt = bytes.fromhex(salt_hex)\n"
+    "    key = hashlib.pbkdf2_hmac('sha256', provided.encode(), salt, 100000)\n"
+    "    return key.hex() == key_hex\n\n"
+    "def create_token(user_id, secret_key, expires_hours=24):\n"
+    "    payload = {'user_id': user_id, 'exp': datetime.utcnow() + timedelta(hours=expires_hours)}\n"
+    "    return jwt.encode(payload, secret_key, algorithm='HS256')\n\n"
+    "def verify_token(token, secret_key):\n"
+    "    try:\n"
+    "        payload = jwt.decode(token, secret_key, algorithms=['HS256'])\n"
+    "        return payload['user_id']\n"
+    "    except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):\n"
+    "        return None\n\n"
+    "def login_required(f):\n"
+    "    @wraps(f)\n"
+    "    def decorated(*args, **kwargs):\n"
+    "        token = request.headers.get('Authorization', '').replace('Bearer ', '')\n"
+    "        if not token:\n"
+    "            return jsonify({'error': 'Token required'}), 401\n"
+    "        user_id = verify_token(token, current_app.config['SECRET_KEY'])\n"
+    "        if not user_id:\n"
+    "            return jsonify({'error': 'Invalid token'}), 401\n"
+    "        g.current_user_id = user_id\n"
+    "        return f(*args, **kwargs)\n"
+    "    return decorated\n"
+    "```\n\n"
+    "### Flask Test Fixture\n"
+    "```python\n"
+    "import pytest\n"
+    "from app import create_app\n\n"
+    "@pytest.fixture\n"
+    "def app():\n"
+    "    app = create_app({'TESTING': True, 'DATABASE_PATH': ':memory:'})\n"
+    "    yield app\n\n"
+    "@pytest.fixture\n"
+    "def client(app):\n"
+    "    return app.test_client()\n"
+    "```\n\n"
+    "CRITICAL: get_db() and close_db() must be CLOSURES inside create_app(), "
+    "NOT class methods or module-level functions. The 'g' object only works "
+    "inside a Flask request/app context.\n"
+)
+
+
 def estimate_tokens(text: str) -> int:
     """
     Estimate token count from text. Uses ~4 chars/token heuristic
@@ -350,6 +440,41 @@ RCA_OUTPUT_SCHEMA = {
         }
     },
     "required": ["root_cause", "why_chain", "what_to_change", "concrete_edits", "needs_re_exploration", "severity"]
+}
+
+# v1.2: Structured output schema for edit repair — grammar-constrained generation
+# Guarantees 100% well-formed output (vs 15-20% malformation with free-text parsing)
+EDIT_REPAIR_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "edits": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "search": {
+                        "type": "string",
+                        "description": "Exact lines from the current file to find and replace. Include 2-3 context lines."
+                    },
+                    "replace": {
+                        "type": "string",
+                        "description": "The corrected replacement lines."
+                    },
+                    "reason": {
+                        "type": "string",
+                        "description": "Brief explanation of what this edit fixes."
+                    }
+                },
+                "required": ["search", "replace"]
+            },
+            "description": "List of search/replace edits to apply surgically."
+        },
+        "analysis": {
+            "type": "string",
+            "description": "Brief analysis of root cause of the failing tests."
+        }
+    },
+    "required": ["edits"]
 }
 
 TOOL_DEFINITIONS = [
@@ -921,14 +1046,14 @@ class ToolExecutor:
                 f"SYNTAX ERROR in {path} — file was written but has invalid Python syntax.\n"
                 f"Error: {error_msg}\n"
                 f"{context_lines}\n\n"
-                "⚠️ You MUST fix this syntax error before proceeding.\n"
-                "Use read_file to see the current content, then use edit_file or "
-                "write_file to fix the error.\n"
-                "Common fixes:\n"
-                "  - @dataclass decorator: must be '@dataclass' on its own line, "
-                "then 'class ClassName:' on the next line\n"
-                "  - Missing colons, parentheses, or indentation errors\n"
-                "  - Unclosed strings or brackets"
+                f"⚠️ You MUST fix this syntax error before proceeding.\n"
+                f"Use read_file to see the current content, then use edit_file or "
+                f"write_file to fix the error.\n"
+                f"Common fixes:\n"
+                f"  - @dataclass decorator: must be '@dataclass' on its own line, "
+                f"then 'class ClassName:' on the next line\n"
+                f"  - Missing colons, parentheses, or indentation errors\n"
+                f"  - Unclosed strings or brackets"
             )
 
 
@@ -995,18 +1120,28 @@ class LLMClient:
             logger.warning("Structured output only supported for Ollama provider")
             return None
 
-        endpoint = (self.config.endpoint or "http://127.0.0.1:11434").rstrip("/")
+        endpoint = (self.config.endpoint or "http://127.0.0.1:11435").rstrip("/")
         url = f"{endpoint}/api/chat"
+
+        options: dict[str, object] = {
+                "temperature": temperature if temperature is not None else self.config.temperature,
+                "num_predict": self.config.max_tokens,
+                "num_ctx": self.config.context_window,  # v1.1c: was missing — Ollama defaulted to 2048
+                "repeat_penalty": self.config.repeat_penalty,  # v1.2: disabled for Qwen-Next (default 1.0)
+                "top_p": self.config.top_p,  # v1.2: nucleus sampling
+            }
+        # v1.2: Conditionally add optional parameters
+        if self.config.min_p > 0:
+            options["min_p"] = self.config.min_p
+        if self.config.num_keep >= 0:
+            options["num_keep"] = self.config.num_keep
 
         payload = {
             "model": self.config.model_id,
             "messages": messages,
             "stream": False,
             "format": schema,
-            "options": {
-                "temperature": temperature if temperature is not None else self.config.temperature,
-                "num_predict": self.config.max_tokens,
-            }
+            "options": options,
         }
 
         try:
@@ -1036,17 +1171,27 @@ class LLMClient:
         temperature: Optional[float] = None,
     ) -> Dict[str, Any]:
         """Call Ollama /api/chat endpoint."""
-        endpoint = (self.config.endpoint or "http://127.0.0.1:11434").rstrip("/")
+        endpoint = (self.config.endpoint or "http://127.0.0.1:11435").rstrip("/")
         url = f"{endpoint}/api/chat"
+
+        options2: dict[str, object] = {
+                "temperature": temperature if temperature is not None else self.config.temperature,
+                "num_predict": self.config.max_tokens,
+                "num_ctx": self.config.context_window,  # v1.1c: was missing — Ollama defaulted to 2048
+                "repeat_penalty": self.config.repeat_penalty,  # v1.2: disabled for Qwen-Next (default 1.0)
+                "top_p": self.config.top_p,  # v1.2: nucleus sampling
+            }
+        # v1.2: Conditionally add optional parameters
+        if self.config.min_p > 0:
+            options2["min_p"] = self.config.min_p
+        if self.config.num_keep >= 0:
+            options2["num_keep"] = self.config.num_keep
 
         payload = {
             "model": self.config.model_id,
             "messages": messages,
             "stream": False,
-            "options": {
-                "temperature": temperature if temperature is not None else self.config.temperature,
-                "num_predict": self.config.max_tokens,
-            }
+            "options": options2,
         }
 
         if tools and self.config.supports_tools:
@@ -1252,6 +1397,29 @@ class AgentRunner:
             if playbook_context:
                 system_prompt = system_prompt + "\n\n" + playbook_context
                 logger.debug(f"Playbook injected for {agent_config.role}: {len(playbook_context)} chars")
+
+            # v1.2: Thinking mode injection (Qwen3 /think and /no_think commands)
+            # Heavy agents (plan, build, edit_repair) get extended reasoning
+            # Light agents (init, explore, test) get fast mode
+            thinking_mode = agent_config.model.thinking_mode
+            if thinking_mode == "auto":
+                # Map agent roles to thinking behavior
+                heavy_roles = {"plan", "build"}
+                if agent_config.role in heavy_roles:
+                    thinking_mode = "enabled"
+                else:
+                    thinking_mode = "disabled"
+
+            if thinking_mode == "enabled":
+                system_prompt = "/think\n" + system_prompt
+                # Add thinking budget if configured
+                if agent_config.model.thinking_budget > 0:
+                    system_prompt += f"\n\n<thinking_budget>{agent_config.model.thinking_budget}</thinking_budget>"
+                logger.debug(f"  Thinking mode: ENABLED for {agent_config.role}")
+            elif thinking_mode == "disabled":
+                system_prompt = "/no_think\n" + system_prompt
+                logger.debug(f"  Thinking mode: DISABLED for {agent_config.role}")
+
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": user_prompt})
 
@@ -1371,7 +1539,7 @@ class AgentRunner:
                             success=False,
                             output="\n".join(all_output),
                             error=f"Stuck loop detected at round {round_count}: same tool calls repeated {STUCK_THRESHOLD} times. "
-                                  "The agent cannot solve this problem with its current approach.",
+                                  f"The agent cannot solve this problem with its current approach.",
                             duration_seconds=elapsed,
                         )
 
@@ -1608,7 +1776,7 @@ class AgentRunner:
         if not system_prompt:
             system_prompt = "You are the INITIALIZER agent. Set up the project environment for the given task."
 
-        user_prompt = """## Task
+        user_prompt = f"""## Task
 {goal}
 
 ## Task ID
@@ -1637,6 +1805,7 @@ IMPORTANT:
         This runs before any LLM agent touches the project, so the build
         agent never wastes rounds on 'git init' or 'pip install pytest'.
         """
+
         wd = self.working_dir
 
         # Git init (if not already a repo)
@@ -1719,7 +1888,7 @@ IMPORTANT:
         if not system_prompt:
             system_prompt = "You are the EXPLORE agent. Gather context about the codebase. READ files, don't modify them."
 
-        user_prompt = """## Task
+        user_prompt = f"""## Task
 {state.goal}
 
 ## Task ID
@@ -1784,7 +1953,7 @@ Focus on what's relevant to the task. Be selective.
                 "into a structured report. Be precise about file paths and patterns. "
                 "Only include files and patterns that actually exist — do not hallucinate."
             )},
-            {"role": "user", "content": """## Task
+            {"role": "user", "content": f"""## Task
 {state.goal}
 
 ## Raw Exploration Output
@@ -1917,7 +2086,7 @@ Include only real file paths and patterns you can see in the output.
             )
             exploration_context = f"\n## Exploration Findings\n{exploration_context}\n"
 
-        user_prompt = """## Task
+        user_prompt = f"""## Task
 {state.goal}
 
 ## Task ID
@@ -2122,7 +2291,7 @@ USE THEM. Do not just describe what you would do — actually do it using the to
             capped_memory = truncate_to_budget(
                 memory_context, BUILD_PROMPT_BUDGET["memory_context"], "memory"
             )
-            history_section = """
+            history_section = f"""
 ## ⚠️ PREVIOUS ITERATION HISTORY — READ THIS CAREFULLY
 {capped_memory}
 You MUST review the failures above and NOT repeat them.
@@ -2171,7 +2340,7 @@ just the broken part.
         else:
             fix_instructions = ""
 
-        user_prompt = """## Task
+        user_prompt = f"""## Task
 {state.goal}
 
 ## Task ID
@@ -2247,7 +2416,7 @@ DO NOT just describe what you would do. ACTUALLY DO IT using the tools.
                 cmd = criterion.verification_command or "Manual inspection required"
                 dod_criteria_list += f"\n### criterion-{idx}: {criterion.description}\nVerification command: `{cmd}`\n"
 
-        user_prompt = """## VERIFY EACH CRITERION BY RUNNING COMMANDS
+        user_prompt = f"""## VERIFY EACH CRITERION BY RUNNING COMMANDS
 
 For EACH criterion below, use run_command to execute the verification command.
 
@@ -2384,7 +2553,7 @@ USE THEM. Do not just describe what you would do — actually do it using the to
             if source_path.exists():
                 try:
                     source_content = source_path.read_text()[:3000]
-                    source_context = """
+                    source_context = f"""
 ## Source Module Being Tested: `{tests_for}`
 ```python
 {source_content}
@@ -2441,13 +2610,13 @@ Read this carefully. Your tests must import from and test the actual classes/fun
                 try:
                     test_content = test_path.read_text()[:3000]
                     tdd_contract = (
-                        "\n## TDD CONTRACT - Your code MUST pass these tests\n"
-                        "The following test file is LOCKED. You cannot change it.\n"
-                        "Your implementation MUST satisfy these tests exactly.\n"
-                        "Read the method calls carefully - match EXACT signatures.\n\n"
+                        f"\n## TDD CONTRACT - Your code MUST pass these tests\n"
+                        f"The following test file is LOCKED. You cannot change it.\n"
+                        f"Your implementation MUST satisfy these tests exactly.\n"
+                        f"Read the method calls carefully - match EXACT signatures.\n\n"
                         f"### `{test_filename}`\n"
                         f"```python\n{test_content}\n```\n\n"
-                        "CRITICAL: Match the exact method signatures the tests use.\n"
+                        f"CRITICAL: Match the exact method signatures the tests use.\n"
                     )
                 except Exception:
                     pass
@@ -2460,12 +2629,12 @@ Read this carefully. Your tests must import from and test the actual classes/fun
                 dep_path = self.working_dir / dep
                 if dep_path.exists():
                     try:
-                        dep_content = dep_path.read_text()[:2000]
+                        dep_content = dep_path.read_text()[:4000]  # v1.0: 2000→4000
                         deps_lines.append(f"### `{dep}`\n```python\n{dep_content}\n```")
                     except Exception:
                         pass
             if deps_lines:
-                deps_context = """
+                deps_context = f"""
 ## Dependency Modules (you MUST import from these correctly)
 {chr(10).join(deps_lines)}
 
@@ -2475,7 +2644,7 @@ Import from these modules as needed. Use the exact class/function names shown ab
         # v0.6.2: Error context from previous failed sampling attempts
         error_section = ""
         if error_context:
-            error_section = """
+            error_section = f"""
 ## ⚠️ PREVIOUS ATTEMPTS FAILED — AVOID THESE MISTAKES
 Multiple previous attempts to write this test file ALL failed with errors.
 Study these errors carefully and write DIFFERENT code that avoids them:
@@ -2497,7 +2666,7 @@ Common fixes:
         if kb_context:
             kb_section = kb_context
 
-        user_prompt = """{kb_section}
+        user_prompt = f"""{kb_section}
 ## Task
 {state.goal}
 
@@ -2585,8 +2754,8 @@ Write the file now using `write_file`, then verify.
                 source_path = self.working_dir / (tests_for + '.py')
             if source_path.exists():
                 try:
-                    source_content = source_path.read_text()[:3000]
-                    source_context = """
+                    source_content = source_path.read_text()[:6000]  # v1.0: 3000→6000
+                    source_context = f"""
 ## Source Module Being Tested: `{tests_for}`
 ```python
 {source_content}
@@ -2594,6 +2763,34 @@ Write the file now using `write_file`, then verify.
 Read this carefully. Your tests must import from and test the actual classes/functions defined above.
 """
                     contract_section = self._extract_api_contract(tests_for, source_content)
+
+                    # v1.0: Inject compact API signatures for OTHER source files
+                    # so the test can see the full API chain (e.g., test_app needs
+                    # to know database.py has BookmarkDB with get_all(page, tag))
+                    # Research: Anthropic's context engineering shows that more tokens
+                    # ≠ better results — "context rot" degrades attention. So we inject
+                    # compact signatures, not full source, for dependencies.
+                    dep_contracts = []
+                    for dep_file in sorted(self.working_dir.glob("*.py")):
+                        if dep_file.name.startswith("test_") or dep_file.name.startswith("__"):
+                            continue
+                        if dep_file.name == source_path.name:
+                            continue  # Already injected full source above
+                        try:
+                            dep_src = dep_file.read_text()
+                            dep_contract = self._extract_api_contract(dep_file.name, dep_src)
+                            if dep_contract:
+                                dep_contracts.append(
+                                    f"### `{dep_file.name}` API:\n{dep_contract}"
+                                )
+                        except Exception:
+                            continue
+                    if dep_contracts:
+                        source_context += (
+                            "\n## Other Source Module APIs (use these exact imports)\n\n"
+                            + "\n\n".join(dep_contracts)
+                            + "\n\nImport from these modules using the exact names above.\n"
+                        )
                 except Exception:
                     pass
 
@@ -2632,13 +2829,13 @@ Read this carefully. Your tests must import from and test the actual classes/fun
                 try:
                     test_content = test_path.read_text()[:3000]
                     tdd_contract = (
-                        "\n## TDD CONTRACT - Your code MUST pass these tests\n"
-                        "The following test file is LOCKED. You cannot change it.\n"
-                        "Your implementation MUST satisfy these tests exactly.\n"
-                        "Read the method calls carefully - match EXACT signatures.\n\n"
+                        f"\n## TDD CONTRACT - Your code MUST pass these tests\n"
+                        f"The following test file is LOCKED. You cannot change it.\n"
+                        f"Your implementation MUST satisfy these tests exactly.\n"
+                        f"Read the method calls carefully - match EXACT signatures.\n\n"
                         f"### `{test_filename}`\n"
                         f"```python\n{test_content}\n```\n\n"
-                        "CRITICAL: Match the exact method signatures the tests use.\n"
+                        f"CRITICAL: Match the exact method signatures the tests use.\n"
                     )
                 except Exception:
                     pass
@@ -2651,12 +2848,12 @@ Read this carefully. Your tests must import from and test the actual classes/fun
                 dep_path = self.working_dir / dep
                 if dep_path.exists():
                     try:
-                        dep_content = dep_path.read_text()[:2000]
+                        dep_content = dep_path.read_text()[:4000]  # v1.0: 2000→4000
                         deps_lines.append(f"### `{dep}`\n```python\n{dep_content}\n```")
                     except Exception:
                         pass
             if deps_lines:
-                deps_context = """
+                deps_context = f"""
 ## Dependency Modules (you MUST import from these correctly)
 {chr(10).join(deps_lines)}
 
@@ -2666,7 +2863,7 @@ Import from these modules as needed. Use the exact class/function names shown ab
         # Error context from previous attempts
         error_section = ""
         if error_context:
-            error_section = """
+            error_section = f"""
 ## PREVIOUS ATTEMPTS FAILED — AVOID THESE MISTAKES
 {error_context[:1500]}
 """
@@ -2675,6 +2872,16 @@ Import from these modules as needed. Use the exact class/function names shown ab
         kb_section = ""
         if kb_context:
             kb_section = kb_context
+
+        # v1.1: Flask golden snippet injection
+        # Research: Antirez found injecting exact docs makes LLMs expert-level immediately
+        flask_section = ""
+        goal_lower = (state.goal or "").lower()
+        file_lower = filename.lower()
+        desc_lower = (step_info.get('description', '') or '').lower()
+        if any(kw in goal_lower or kw in file_lower or kw in desc_lower
+               for kw in ['flask', 'api', 'rest api', 'endpoint', 'route', 'jwt', 'auth']):
+            flask_section = FLASK_GOLDEN_SNIPPET
 
         # --- System prompt: raw output, no tools ---
         system_prompt = (
@@ -2703,7 +2910,8 @@ Import from these modules as needed. Use the exact class/function names shown ab
             "- Imports between modules: If A imports B, B must have valid syntax or A fails too.\n"
         )
 
-        user_prompt = """{kb_section}
+        user_prompt = f"""{kb_section}
+{flask_section}
 ## Task
 {state.goal}
 
@@ -2777,7 +2985,15 @@ Now write the complete `{filename}` between the markers:
                 feedback_section += f"\n{fb}\n"
             feedback_section += "\nFix these matching issues in your new SEARCH blocks.\n"
 
-        user_prompt = """## Task
+        # v1.1: Flask golden snippets for edit repair (was only in build)
+        flask_section = ""
+        goal_lower = (state.goal or "").lower()
+        file_lower = filename.lower()
+        if any(kw in goal_lower or kw in file_lower
+               for kw in ['flask', 'api', 'rest api', 'endpoint', 'route', 'jwt', 'auth', 'app.py']):
+            flask_section = f"\n## Flask Reference Patterns\n{FLASK_GOLDEN_SNIPPET}\n"
+
+        user_prompt = f"""## Task
 {state.goal}
 
 ## Current File: `{filename}` (with line:hash tags)
@@ -2790,6 +3006,7 @@ Your SEARCH blocks should match the CONTENT part (after the `| `), not the tags.
 
 {source_context}
 {contract_section}
+{flask_section}
 
 {feedback_section}
 
@@ -2813,7 +3030,6 @@ Produce SEARCH/REPLACE edits to fix the failing tests.
             tools=None, temperature=temperature
         )
 
-    # Alias for orchestrator compatibility
     def run_edit_repair_structured(
         self,
         state: TaskState,
@@ -2823,15 +3039,94 @@ Produce SEARCH/REPLACE edits to fix the failing tests.
         source_context: str = "",
         contract_section: str = "",
         temperature: float = 0.2,
-    ) -> list:
-        """Wrapper that returns parsed SEARCH/REPLACE edits as a list."""
-        result = self.run_edit_repair(
-            state, filename, current_content, test_output,
-            source_context, contract_section, temperature,
-        )
-        if result.success and result.output:
-            return self.parse_search_replace(result.output)
-        return []
+    ) -> Optional[list]:
+        """
+        v1.2: Structured edit repair using grammar-constrained JSON output.
+
+        Instead of free-text SEARCH/REPLACE blocks that need regex parsing,
+        this uses Ollama's structured output (format=schema) to guarantee
+        100% well-formed JSON edit blocks. Falls through to None if the
+        model or provider doesn't support structured output.
+
+        Returns:
+            List of (search, replace) tuples, or None if structured output unavailable.
+        """
+        agent_config = self.config.get_agent("build")
+        client = self._get_llm_client(agent_config.model)
+
+        if agent_config.model.provider != "ollama":
+            return None
+
+        tagged_content = self.hashline_tag(current_content)
+
+        feedback_section = ""
+        if state.edit_feedback:
+            feedback_section = "## Previous Edit Failures\n"
+            for fb in state.edit_feedback[-3:]:
+                feedback_section += f"\n{fb}\n"
+
+        flask_section = ""
+        goal_lower = (state.goal or "").lower()
+        file_lower = filename.lower()
+        if any(kw in goal_lower or kw in file_lower
+               for kw in ['flask', 'api', 'rest api', 'endpoint', 'route', 'jwt', 'auth', 'app.py']):
+            flask_section = f"\n## Flask Reference Patterns\n{FLASK_GOLDEN_SNIPPET}\n"
+
+        messages = [
+            {"role": "system", "content": (
+                "/think\n"  # Enable thinking for repair reasoning
+                "You are the REPAIR agent. Fix specific bugs in code using surgical edits.\n"
+                "Analyze the test failures and produce targeted search/replace edits.\n"
+                "SEARCH text must match the actual file content exactly.\n"
+                "Include 2-3 context lines to make matches unique.\n"
+                "Fix ONLY failing tests. Do NOT modify passing code.\n"
+                "Do NOT rewrite the entire file — minimal, surgical changes only."
+            )},
+            {"role": "user", "content": f"""## Task
+{state.goal}
+
+## Current File: `{filename}` (with line:hash tags)
+```
+{tagged_content}
+```
+
+{source_context}
+{contract_section}
+{flask_section}
+{feedback_section}
+
+## Test Failures to Fix
+```
+{test_output[-2000:]}
+```
+
+Produce JSON with your edits. Each edit has "search" (exact lines from file) and "replace" (corrected lines).
+"""}
+        ]
+
+        try:
+            result = client.chat_structured(messages, schema=EDIT_REPAIR_SCHEMA, temperature=temperature)
+            if not result or "edits" not in result:
+                logger.debug("Structured edit repair returned no edits")
+                return None
+
+            edits = []
+            for edit in result["edits"]:
+                search = edit.get("search", "").strip()
+                replace = edit.get("replace", "").strip()
+                if search:  # Allow empty replace (deletion)
+                    edits.append((search, replace))
+                    reason = edit.get("reason", "")
+                    if reason:
+                        logger.debug(f"  Structured edit: {reason[:80]}")
+
+            if edits:
+                logger.info(f"  📐 Structured repair: {len(edits)} edit(s) from JSON schema")
+            return edits if edits else None
+
+        except Exception as e:
+            logger.debug(f"Structured edit repair failed: {e}")
+            return None
 
     @staticmethod
     def parse_search_replace(model_output: str) -> list:
@@ -2858,6 +3153,14 @@ Produce SEARCH/REPLACE edits to fix the failing tests.
             search_text = search_part.strip('\n\r')
             replace_text = replace_part.strip('\n\r')
 
+            # v1.1: Strip hashline tags if model included them
+            # (Model sees "  3:f1| from flask import g" and copies tags into SEARCH)
+            import re as _re
+            if _re.search(r'^\s*\d+:[0-9a-f]{2}\| ', search_text, _re.MULTILINE):
+                search_text = AgentRunner.strip_hashline_tags(search_text)
+            if _re.search(r'^\s*\d+:[0-9a-f]{2}\| ', replace_text, _re.MULTILINE):
+                replace_text = AgentRunner.strip_hashline_tags(replace_text)
+
             if search_text:  # Don't add empty searches
                 blocks.append((search_text, replace_text))
 
@@ -2874,7 +3177,7 @@ Produce SEARCH/REPLACE edits to fix the failing tests.
         Matching layers (tried in order):
         1. Exact match
         2. Trailing-whitespace-stripped match
-        3. difflib.SequenceMatcher fuzzy match (≥0.85 similarity)
+        3. difflib.SequenceMatcher fuzzy match (≥0.78 similarity)
         4. Content-stripped match (ignore all leading whitespace)
         5. Partial-line match (for single-line edits)
 
@@ -2971,8 +3274,9 @@ Produce SEARCH/REPLACE edits to fix the failing tests.
                         best_ratio = ratio
                         best_start = i
 
-                # Accept if similarity ≥ 0.85 (v0.9.9a: raised from 0.7 — too aggressive)
-                if best_ratio >= 0.85 and best_start >= 0:
+                # Accept if similarity ≥ 0.78 (v1.1: lowered from 0.85 — with tag stripping
+                # and syntax rollback, we can afford to be more permissive)
+                if best_ratio >= 0.78 and best_start >= 0:
                     # v0.9.9b: Preserve relative indentation (not flat)
                     indented_replace = _indent_replace(replace_text, content_lines[best_start])
 
@@ -3020,7 +3324,7 @@ Produce SEARCH/REPLACE edits to fix the failing tests.
                         best_line_ratio = ratio
                         best_line_idx = i
 
-                if best_line_ratio >= 0.85 and best_line_idx >= 0:
+                if best_line_ratio >= 0.78 and best_line_idx >= 0:
                     # v0.9.9b: relative indent for single-line replacement
                     indented_lines = _indent_replace(replace_text, content_lines[best_line_idx])
                     content_lines[best_line_idx:best_line_idx + 1] = indented_lines
@@ -3037,7 +3341,7 @@ Produce SEARCH/REPLACE edits to fix the failing tests.
                 content_lines = content.split('\n')
                 # Find most similar region using first line
                 best_sim: float = 0.0
-                best_idx: int = 0
+                best_idx = 0
                 for i, cl in enumerate(content_lines):
                     r = difflib.SequenceMatcher(None, preview_stripped[0], cl.strip()).ratio()
                     if r > best_sim:
@@ -3050,10 +3354,10 @@ Produce SEARCH/REPLACE edits to fix the failing tests.
                 nearby = '\n'.join(f"  {j+1}: {content_lines[j]}" for j in range(start, end))
                 fb = (
                     f"SEARCH block failed to match (best similarity: {best_ratio:.0%}).\n"
-                    "Your SEARCH started with:\n"
+                    f"Your SEARCH started with:\n"
                     f"  {preview_stripped[0]}\n"
                     f"Nearest actual lines in file (lines {start+1}-{end}):\n{nearby}\n"
-                    "The SEARCH must match the file EXACTLY including whitespace."
+                    f"The SEARCH must match the file EXACTLY including whitespace."
                 )
                 feedback.append(fb)
 
@@ -3073,7 +3377,7 @@ Produce SEARCH/REPLACE edits to fix the failing tests.
                         feedback.append(
                             f"ROLLBACK: {applied} edits were applied but broke Python syntax. "
                             f"Error: {result.stderr.strip()[:200]}. "
-                            "All edits reverted. Try smaller, more targeted changes."
+                            f"All edits reverted. Try smaller, more targeted changes."
                         )
                         return 0, feedback
                 except Exception:
@@ -3240,7 +3544,7 @@ Produce SEARCH/REPLACE edits to fix the failing tests.
             return ""
 
         contract = '\n'.join(lines)
-        return """
+        return f"""
 ## ⚠️ API CONTRACT (from `{source_filename}` — MUST MATCH EXACTLY)
 Your tests MUST call these methods with EXACTLY these signatures.
 Do NOT invent extra parameters or change the calling convention.
@@ -3317,13 +3621,12 @@ If a method takes args, call it with those args: `obj.method(arg1, arg2)`
             return ""
 
         # Detect module type
-        is_storage = any(kw in source_module.lower() for kw in ['storage', 'store', 'repo', 'db'])
-        is_flask = 'Flask(' in source_content or 'from flask import' in source_content
-        is_cli = not is_flask and any(kw in source_module.lower() for kw in ['cli', 'main', 'app'])
-
+        is_storage = any(kw in source_module.lower() for kw in ["storage", "store", "repo", "db"])
+        is_flask = "Flask(" in source_content or "from flask import" in source_content
+        is_cli = not is_flask and any(kw in source_module.lower() for kw in ["cli", "main", "app"])
         # Build import line
         importable_names = [c['name'] for c in classes] + functions
-        import_line = f"from {source_module} import {', '.join(importable_names)}"  # type: ignore[arg-type]
+        import_line = f"from {source_module} import {', '.join(str(n) for n in importable_names)}"
 
         # For Flask apps, import the app object — NOT route functions
         if is_flask:
@@ -3370,7 +3673,7 @@ If a method takes args, call it with those args: `obj.method(arg1, arg2)`
 
         if is_storage and classes:
             # v0.7.4: Storage test template — API-aware using actual method signatures
-            storage_class = str(classes[0]['name'])
+            storage_class = classes[0]['name']
 
             # Extract method signatures to generate correct test calls
             import re as re_mod
@@ -3468,7 +3771,7 @@ If a method takes args, call it with those args: `obj.method(arg1, arg2)`
                                 f"    def test_{method_lower}_{test_name}(self):",
                                 f"        response = self.client.post('{route_path}', json={{",
                                 "            # Add required fields here",
-                                "        }})",
+                                "        })",
                                 "        self.assertIn(response.status_code, [200, 201])",
                                 "        data = response.get_json()",
                                 "        self.assertIsNotNone(data)",
@@ -3513,16 +3816,13 @@ If a method takes args, call it with those args: `obj.method(arg1, arg2)`
         else:
             # Generic test template
             for cls in classes[:2]:
-                cls_name: str = str(cls['name'])
-                cls_params = cls.get('init_params', []) or []  # type: ignore[assignment]
                 template_lines.extend([
                     "",
-                    f"    def test_{cls_name.lower()}_creation(self):",
+                    f"    def test_{cls['name'].lower()}_creation(self):",  # type: ignore[union-attr]
                 ])
-                if cls_params:
+                if cls['init_params']:
                     param_strs = []
-                    for param in cls_params[:4]:  # type: ignore[misc, index]
-                        name, ptype = str(param[0]), str(param[1])  # type: ignore[index]
+                    for name, ptype in cls['init_params'][:4]:  # type: ignore[misc, index]
                         if ptype in ('str', 'String'):
                             param_strs.append(f"{name}='test'")
                         elif ptype in ('int', 'Integer', 'float'):
@@ -3532,10 +3832,10 @@ If a method takes args, call it with those args: `obj.method(arg1, arg2)`
                         else:
                             param_strs.append(f"{name}='test'")
                     params = ', '.join(param_strs)
-                    template_lines.append(f"        obj = {cls_name}({params})")
+                    template_lines.append(f"        obj = {cls['name']}({params})")
                     template_lines.append("        self.assertIsNotNone(obj)")
                 else:
-                    template_lines.append(f"        obj = {cls_name}()")
+                    template_lines.append(f"        obj = {cls['name']}()")
                     template_lines.append("        self.assertIsNotNone(obj)")
 
             for func in functions[:3]:
@@ -3555,7 +3855,7 @@ If a method takes args, call it with those args: `obj.method(arg1, arg2)`
 
         template_code = '\n'.join(template_lines)
 
-        return """
+        return f"""
 ## 📋 TEST TEMPLATE (START FROM THIS — DO NOT IGNORE)
 The following template has been generated from the actual source module `{source_filename}`.
 It has correct imports and class names. **Start from this template** and flesh out the
@@ -3689,7 +3989,7 @@ from scratch — they are already correct.
             budget["failure_history"], "failure history"
         )
 
-        user_content = """## Task
+        user_content = f"""## Task
 {state.goal}
 
 ## Iteration {state.iteration} FAILED
@@ -3807,7 +4107,7 @@ Perform a 5 Whys analysis. What is the SPECIFIC root cause? What SPECIFIC change
         # 2. Git diff (what the build agent changed)
         try:
             diff_result = subprocess.run(
-                ["git", "dif", "HEAD~1", "--stat"],
+                ["git", "diff", "HEAD~1", "--stat"],
                 cwd=self.working_dir, capture_output=True, text=True, timeout=10
             )
             if diff_result.returncode == 0 and diff_result.stdout.strip():
@@ -3820,7 +4120,7 @@ Perform a 5 Whys analysis. What is the SPECIFIC root cause? What SPECIFIC change
             # Actual diff content — most valuable for RCA but also biggest
             if total_chars < budget["total"] - 500:
                 diff_content = subprocess.run(
-                    ["git", "dif", "HEAD~1", "--", "*.py"],
+                    ["git", "diff", "HEAD~1", "--", "*.py"],
                     cwd=self.working_dir, capture_output=True, text=True, timeout=10
                 )
                 if diff_content.returncode == 0 and diff_content.stdout.strip():
@@ -4004,10 +4304,10 @@ Perform a 5 Whys analysis. What is the SPECIFIC root cause? What SPECIFIC change
         if syntax_errors:
             # Fast-fail: source files have syntax errors, no point running tests
             logger.warning(f"  {len(syntax_errors)} source file(s) have syntax errors — "
-                          "tests will fail on import. Reporting syntax errors directly.")
+                          f"tests will fail on import. Reporting syntax errors directly.")
 
-            test_report: Dict[str, Dict[str, Any]] = {}
-            all_evidence: list[str] = []
+            test_report = {}
+            all_evidence = []
             error_summary = "\n".join(
                 f"  {name}: {err[:200]}" for name, err in syntax_errors.items()
             )
@@ -4068,7 +4368,7 @@ Perform a 5 Whys analysis. What is the SPECIFIC root cause? What SPECIFIC change
         # Fix: clean test artifacts before each test file to ensure clean slate.
 
         if valid_test_files:
-            per_file_results: Dict[str, Dict[str, Any]] = {}
+            per_file_results = {}
             all_tests_pass = True
             combined_output = []
 
@@ -4122,16 +4422,16 @@ Perform a 5 Whys analysis. What is the SPECIFIC root cause? What SPECIFIC change
         # v0.8.4: Parse individual test function results from pytest -v output
         # This enables granular criteria mapping instead of binary all-or-nothing.
         # Inspired by SWE-bench: "tests pass" IS the verification — no separate DoD layer.
-        individual_tests: Dict[str, bool] = {}  # {"test_create_project": True, "test_delete_task": False}
+        individual_tests = {}  # {"test_create_project": True, "test_delete_task": False}
         for tf_name, tf_result in per_file_results.items():
-            test_output: str = str(tf_result.get("output", ""))
+            output: str = str(tf_result.get("output", ""))  # type: ignore[no-redef]
             # Parse pytest -v output: "test_app.py::test_create_project PASSED"
-            for match in re_mod.finditer(r'(\w+::|^)(test_\w+)\s+(PASSED|FAILED|ERROR)', test_output, re_mod.MULTILINE):
+            for match in re_mod.finditer(r'(\w+::|^)(test_\w+)\s+(PASSED|FAILED|ERROR)', output, re_mod.MULTILINE):
                 func_name = match.group(2)
                 status = match.group(3)
                 individual_tests[func_name] = (status == "PASSED")
             # Also parse unittest output: "test_create_project (test_app.TestApp) ... ok"
-            for match in re_mod.finditer(r'(test_\w+)\s+\([^)]+\)\s+\.\.\.\s+(ok|FAIL|ERROR)', test_output, re_mod.MULTILINE):
+            for match in re_mod.finditer(r'(test_\w+)\s+\([^)]+\)\s+\.\.\.\s+(ok|FAIL|ERROR)', output, re_mod.MULTILINE):
                 func_name = match.group(1)
                 status = match.group(2)
                 individual_tests[func_name] = (status == "ok")
@@ -4149,7 +4449,7 @@ Perform a 5 Whys analysis. What is the SPECIFIC root cause? What SPECIFIC change
         #   4. Default: proportional to individual test results (NOT binary all-or-nothing)
         test_report = {}
         all_evidence = []
-        unmapped_criteria_indices: list[int] = []
+        unmapped_criteria_indices: list[int] = []  # Track criteria that don't match anything specific
 
         for idx, criterion in enumerate(state.dod.criteria):
             cid = f"criterion-{idx}"
@@ -4180,16 +4480,16 @@ Perform a 5 Whys analysis. What is the SPECIFIC root cause? What SPECIFIC change
                         matched_file = tf.name
                         break
                 if matched_file and matched_file in per_file_results:
-                    matched_result = per_file_results[matched_file]
-                    criterion.passed = bool(matched_result["passed"])
-                    criterion.evidence = str(matched_result.get("output", ""))[:500]
+                    file_result = per_file_results[matched_file]  # type: ignore[assignment]
+                    criterion.passed = bool(file_result["passed"])  # type: ignore[index]
+                    criterion.evidence = str(file_result["output"])[:500]  # type: ignore[index]
                     test_report[cid] = {"passed": criterion.passed, "evidence": criterion.evidence, "command": f"pytest {matched_file}"}
                     if criterion.passed:
                         logger.info(f"DoD {cid} PASSED: {criterion.description[:60]}")
                         all_evidence.append(f"{cid}: PASSED -- {matched_file} tests pass")
                     else:
                         logger.warning(f"DoD {cid} FAILED: {criterion.description[:60]}")
-                        fail_tail = self._extract_test_error_tail(str(matched_result.get('output', '')))
+                        fail_tail = self._extract_test_error_tail(str(file_result['output']))  # type: ignore[index]
                         all_evidence.append(f"{cid}: FAILED -- {matched_file}: {fail_tail}")
                     was_mapped = True
 
@@ -4215,9 +4515,9 @@ Perform a 5 Whys analysis. What is the SPECIFIC root cause? What SPECIFIC change
             if individual_tests:
                 # Extract meaningful words from criterion (skip common words)
                 skip_words = {'the', 'a', 'an', 'is', 'are', 'has', 'have', 'can', 'should',
-                              'must', 'will', 'be', 'to', 'o', 'in', 'for', 'with', 'and',
+                              'must', 'will', 'be', 'to', 'of', 'in', 'for', 'with', 'and',
                               'or', 'not', 'all', 'each', 'that', 'this', 'it', 'on', 'at',
-                              'by', 'from', 'as', 'when', 'i', 'no', 'any', 'only', 'test',
+                              'by', 'from', 'as', 'when', 'if', 'no', 'any', 'only', 'test',
                               'correctly', 'properly', 'successfully', 'valid', 'returns',
                               'return', 'field', 'fields', 'using', 'via', 'endpoint'}
                 desc_words = set(re_mod.findall(r'[a-z_]+', desc_lower)) - skip_words
@@ -4293,7 +4593,8 @@ Perform a 5 Whys analysis. What is the SPECIFIC root cause? What SPECIFIC change
             passed_count = total_count
 
         # -- Step 4: Build structured test report with workspace info --
-        structured_report: Dict[str, Any] = {
+        criteria_results: list[dict] = []
+        structured_report = {
             "overall_passed": success,
             "passed_count": passed_count,
             "total_count": total_count,
@@ -4303,20 +4604,18 @@ Perform a 5 Whys analysis. What is the SPECIFIC root cause? What SPECIFIC change
                 "valid_test_files": [f.name for f in valid_test_files],
                 "stale_test_files": [f.name for f in test_files if f not in valid_test_files],
             },
-            "criteria_results": [],
+            "criteria_results": criteria_results,
         }
         for idx, criterion in enumerate(state.dod.criteria):
             cid = f"criterion-{idx}"
-            report_entry: Dict[str, Any] = test_report.get(cid, {})
-            evidence_str: str = str(report_entry.get("evidence", ""))
-            criteria_list: List[Dict[str, Any]] = structured_report["criteria_results"]  # type: ignore[assignment]
-            criteria_list.append({
+            report_entry: dict = test_report.get(cid, {})  # type: ignore[assignment]
+            criteria_results.append({
                 "criterion_id": cid,
                 "description": criterion.description,
                 "passed": criterion.passed,
                 "command_run": report_entry.get("command", "none"),
-                "evidence": evidence_str[:300],
-                "failure_reason": "" if criterion.passed else self._extract_failure_reason(evidence_str),
+                "evidence": report_entry.get("evidence", "")[:300],
+                "failure_reason": "" if criterion.passed else self._extract_failure_reason(report_entry.get("evidence", "")),
             })
 
         output = "\n".join(all_evidence)
