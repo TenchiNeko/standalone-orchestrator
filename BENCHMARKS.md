@@ -28,6 +28,43 @@ Five tasks of increasing difficulty, from simple single-class to complex multi-f
 
 ---
 
+## v1.2.2 Results (2026-02-17)
+
+**Model:** Qwen3-Coder-Next 80B MoE (Q4_K_M) + Qwen 2.5 Coder 7B
+**Fix:** Restored f-string prompt interpolation, full Ollama options (num_ctx, repeat_penalty, top_p), thinking tokens — all stripped by v1.2.1 linter regression.
+
+| Task | Level | Outcome | DoD | Tests | Iterations | Duration |
+|------|-------|---------|-----|-------|------------|----------|
+| Calculator | 2 | ✅ Pass | 6/6 | 5/5 (100%) | 1 | 7m |
+| Miniqueue | 3 | ✅ Pass | 6/6 | 16/16 (100%) | 2 | 39m |
+| Task Tracker CLI | 4 | ✅ Pass | 7/7 | 37/39 (95%) | 1 | 45m |
+| Bookmark Manager API | 5 | ✅ Pass | 5/5 | 73/86 (85%) | 2 | 41m |
+| Expense Tracker + Auth | 6 | ✅ Pass | 6/6 | 86/103 (83%) | 1 | 61m |
+
+**Overall: 5/5 tasks passing. 30/30 DoD criteria met (100%). 217/249 tests (87%). Total: 192 minutes.**
+
+### Key Observations
+
+**First-iteration dominance:** Tasks 1, 3, and 5 all passed on the first iteration — including the L6 Expense Tracker which previously required 3 iterations. The restored thinking tokens and full 131K context window let the 80B model reason through complex multi-file architectures in a single pass.
+
+**Calculator regression confirmed fixed:** v1.2.1 broke Calculator completely (produced Bookmark Manager code in all attempts due to literal `{goal}` in prompts). Now back to 5/5, 7 minutes, first try.
+
+**L6 first-iteration pass:** Expense Tracker + Auth passing in 1 iteration (61m) vs previous 3 iterations (170m) is the most significant improvement. The model can now see the full task spec in its 131K context instead of a truncated 2K window.
+
+### v1.2.1 → v1.2.2 Comparison
+
+| Task | v1.2.1 (broken) | v1.2.2 (fixed) |
+|------|-----------------|----------------|
+| Calculator (L2) | ❌ FAIL — 0/0 tests, Bookmark code | ✅ 5/5, 1 iter, 7m |
+| Miniqueue (L3) | ✅ 17/17, 3 iter, 34m | ✅ 16/16, 2 iter, 39m |
+| Task Tracker (L4) | ❌ FAIL — 0/0 tests, 88m | ✅ 37/39, 1 iter, 45m |
+| Bookmark API (L5) | (running when diagnosed) | ✅ 73/86, 2 iter, 41m |
+| Expense Tracker (L6) | (not reached) | ✅ 86/103, 1 iter, 61m |
+
+Root cause: v1.2.1 linter auto-fix stripped `f` prefix from 20+ f-string prompts and removed `num_ctx` from Ollama options, causing 2048-token context truncation.
+
+---
+
 ## v1.2 Results (2026-02-15)
 
 **Model:** Qwen3-Coder-Next 80B MoE (Q4_K_M) + Qwen 2.5 Coder 7B
@@ -150,6 +187,7 @@ v0.9.9b  ██████████░░░░░░  46/70  (66%)
 v1.0     █████████████░░░  66/79  (84%)
 v1.0c    ████████████████  64/65  (98%)
 v1.2     ████████████████  278/300 (93%) — 5/5 tasks (Levels 2-6)
+v1.2.2   ██████████████░░  217/249 (87%) — 5/5 tasks, all DoD 100%, 192m total
 ```
 
 ---
@@ -159,11 +197,11 @@ v1.2     ████████████████  278/300 (93%) — 5/5
 | Level | Description | Example | Status |
 |-------|-------------|---------|--------|
 | 1 | Single function | Fibonacci with tests | ✅ Trivial |
-| 2 | Single class with tests | Calculator | ✅ 5/5, 1 iter |
-| 3 | Multi-file, known patterns | Miniqueue | ✅ 20/20, 1 iter |
-| 4 | Inter-module state, file I/O | Task tracker CLI | ✅ 38/38, 3 iter |
-| 5 | REST API + database + validation | Bookmark manager | ✅ 70/78, 2 iter |
-| 6 | Complex business logic, auth, edge cases | Expense tracker with JWT | ✅ 145/159, 3 iter |
+| 2 | Single class with tests | Calculator | ✅ 5/5, 1 iter, 7m |
+| 3 | Multi-file, known patterns | Miniqueue | ✅ 16/16, 2 iter, 39m |
+| 4 | Inter-module state, file I/O | Task tracker CLI | ✅ 37/39, 1 iter, 45m |
+| 5 | REST API + database + validation | Bookmark manager | ✅ 73/86, 2 iter, 41m |
+| 6 | Complex business logic, auth, edge cases | Expense tracker with JWT | ✅ 86/103, 1 iter, 61m |
 | 7 | Async, state machines, protocols | Chat server with WebSocket | 🔲 Future |
 | 8+ | Concurrency, distributed systems | Job scheduler, CRDT editor | 🔲 Future |
 
@@ -190,7 +228,21 @@ python3 benchmark.py --list
 
 ---
 
+## What Changed in v1.2.2 (Hotfix — Regression Fix)
+
+| Issue | Root Cause | Fix |
+|---|---|---|
+| All prompts sent literal `{goal}` text | Linter stripped `f` prefix from 20+ f-string prompts | Restored from pre-v1.2.1 backup |
+| Ollama using 2048 token context | `num_ctx` removed from options dict | Restored full options (num_ctx, repeat_penalty, top_p) |
+| No Qwen3 thinking mode | `/think` and `/no_think` injection removed | Restored thinking mode injection |
+| Flask tasks lost expert context | `FLASK_GOLDEN_SNIPPET` removed | Restored golden snippet injection |
+| Dependency contracts missing | API contract extraction removed | Restored `dep_contracts` for test builds |
+
+Cherry-picked from v1.2.1: httpx migration, `_validate_path()` guard, port 11434→11435.
+
 ## What Changed in v1.2.1 (Bug Fixes + Iteration Tuning)
+
+> ⚠️ **v1.2.1 introduced critical regressions** (f-string prompt destruction, Ollama options removal) that were fixed in v1.2.2. See [CHANGELOG-v1.2.2.md](CHANGELOG-v1.2.2.md) for details.
 
 | Fix | Before | After |
 |---|---|---|

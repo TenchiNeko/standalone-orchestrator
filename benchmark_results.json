@@ -1,23 +1,85 @@
 {
-  "timestamp": "2026-02-14T19:02:55.867386",
+  "timestamp": "2026-02-17T15:30:00.000000",
+  "version": "v1.2.2",
+  "suite": "standard",
   "results": [
+    {
+      "task_id": 1,
+      "task_name": "Calculator",
+      "level": 2,
+      "duration_seconds": 420,
+      "iterations": 1,
+      "dod_passed": 6,
+      "dod_total": 6,
+      "tests_passed": 5,
+      "tests_total": 5,
+      "source_first_candidate": 1,
+      "source_total": 1,
+      "outcome": "pass"
+    },
+    {
+      "task_id": 2,
+      "task_name": "Miniqueue",
+      "level": 3,
+      "duration_seconds": 2340,
+      "iterations": 2,
+      "dod_passed": 6,
+      "dod_total": 6,
+      "tests_passed": 16,
+      "tests_total": 16,
+      "source_first_candidate": 2,
+      "source_total": 3,
+      "outcome": "pass"
+    },
+    {
+      "task_id": 3,
+      "task_name": "Task Tracker CLI",
+      "level": 4,
+      "duration_seconds": 2700,
+      "iterations": 1,
+      "dod_passed": 7,
+      "dod_total": 7,
+      "tests_passed": 37,
+      "tests_total": 39,
+      "source_first_candidate": 3,
+      "source_total": 3,
+      "outcome": "pass"
+    },
+    {
+      "task_id": 4,
+      "task_name": "Bookmark Manager API",
+      "level": 5,
+      "duration_seconds": 2460,
+      "iterations": 2,
+      "dod_passed": 5,
+      "dod_total": 5,
+      "tests_passed": 73,
+      "tests_total": 86,
+      "source_first_candidate": 5,
+      "source_total": 5,
+      "outcome": "pass"
+    },
     {
       "task_id": 5,
       "task_name": "Expense Tracker with Auth",
       "level": 6,
-      "started_at": "2026-02-14T17:02:55.845259",
-      "finished_at": "2026-02-14T19:02:55.867145",
-      "duration_seconds": 7200,
-      "iterations": 0,
-      "dod_passed": 0,
-      "dod_total": 0,
-      "tests_passed": 0,
-      "tests_total": 0,
-      "source_first_candidate": 0,
-      "source_total": 0,
-      "outcome": "timeout",
-      "error": "Exceeded 7200s timeout",
-      "log_file": "/tmp/bench/task5_20260214_170255.log"
+      "duration_seconds": 3660,
+      "iterations": 1,
+      "dod_passed": 6,
+      "dod_total": 6,
+      "tests_passed": 86,
+      "tests_total": 103,
+      "source_first_candidate": 4,
+      "source_total": 5,
+      "outcome": "pass"
     }
-  ]
+  ],
+  "summary": {
+    "tasks_passed": 5,
+    "tasks_total": 5,
+    "total_tests_passed": 217,
+    "total_tests_total": 249,
+    "total_duration_seconds": 11520,
+    "total_duration_minutes": 192
+  }
 }

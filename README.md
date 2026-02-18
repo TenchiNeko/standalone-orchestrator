@@ -22,19 +22,19 @@ Give it a task description. It plans, builds, tests, debugs, and fixes — itera
 | **Lock-in** | Married to the framework's abstractions | Swap Ollama for vLLM/llama.cpp by changing one URL |
 | **Cost** | Usually wraps OpenAI/Anthropic APIs | 100% local, zero API costs |
 
-### Latest Benchmark (v1.2)
+### Latest Benchmark (v1.2.2)
 
 ```
 🏁 Running 5 benchmark task(s)...
 
-Task 1: Calculator (Level 2)            → ✅ PASS  5/5 tests,   1 iter, 21m
-Task 2: Miniqueue (Level 3)             → ✅ PASS  20/20 tests, 1 iter, 11m
-Task 3: Task Tracker CLI (Level 4)      → ✅ PASS  38/38 tests, 3 iter, 21m
-Task 4: Bookmark Manager API (Level 5)  → ✅ PASS  70/78 tests, 2 iter, 29m
-Task 5: Expense Tracker + Auth (Level 6) → ✅ PASS  145/159 tests, 3 iter, 170m
+Task 1: Calculator (Level 2)             → ✅ PASS  5/5 tests,   1 iter,  7m
+Task 2: Miniqueue (Level 3)              → ✅ PASS  16/16 tests, 2 iter, 39m
+Task 3: Task Tracker CLI (Level 4)       → ✅ PASS  37/39 tests, 1 iter, 45m
+Task 4: Bookmark Manager API (Level 5)   → ✅ PASS  73/86 tests, 2 iter, 41m
+Task 5: Expense Tracker + Auth (Level 6) → ✅ PASS  86/103 tests, 1 iter, 61m
 ```
 
-5/5 tasks passing — 278/300 tests (93%). The system handles everything from simple classes to complex multi-file REST APIs with JWT auth, budget limits, and CSV export — fully autonomously on local hardware.
+5/5 tasks passing — 217/249 tests (87%). All DoD criteria met across every level. The system handles everything from simple classes to complex multi-file REST APIs with JWT auth, budget limits, and CSV export — fully autonomously on local hardware.
 
 ```
 Task: "Build a task tracker CLI with JSON persistence..."
@@ -199,7 +199,7 @@ All optimizations are configurable via JSON config overrides or environment vari
 |------|-------|---------|
 | `standalone_main.py` | 132 | CLI entry point. Parses args, loads config, starts orchestrator |
 | `standalone_orchestrator.py` | 4,655 | Main loop: plan → build → test → RCA → retry. Multi-candidate sampling, edit repair, AST signatures, import graphs, cascade rebuilds, self-play data collection |
-| `standalone_agents.py` | 4,931 | Agent implementations. Ollama HTTP client, tool-use parsing, structured output, thinking token injection |
+| `standalone_agents.py` | 4,944 | Agent implementations. Ollama HTTP client, tool-use parsing, structured output, thinking token injection |
 | `standalone_config.py` | 302 | Dual-instance Ollama config. Model routing, GPU assignments, inference optimization parameters |
 | `standalone_models.py` | 196 | Data models: `AgentResult`, `TaskState`, `BuildStep` |
 | `standalone_session.py` | 134 | Session state persistence (JSON) |
@@ -366,6 +366,8 @@ This project follows the **library approach** — not the framework approach. Th
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| v1.2.2 | 2026-02-17 | Hotfix: restored f-string prompts, Ollama options, thinking mode (v1.2.1 regressions) |
+| v1.2.1 | 2026-02-16 | httpx migration, path traversal guard, per-task iteration limits |
 | v1.2 | 2026-02-15 | Inference optimizations: structured edits, thinking tokens, AST-RAG, self-play |
 | v1.1c | 2026-02-14 | Fixed num_ctx bug (128K→2K truncation), branch audit, 4 critical bug fixes |
 | v1.0c | 2026-02-14 | First 8/8 DoD pass on Level 5. Cascade rebuilds, RCA working end-to-end |
