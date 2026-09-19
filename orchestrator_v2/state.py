@@ -53,6 +53,13 @@ class TaskContract:
             raise ValueError("contract requires a goal and at least one criterion")
         if not self.permitted_files or not self.permitted_actions:
             raise ValueError("contract must declare permitted files and actions")
+        unknown = set(self.permitted_actions) - {"read_file", "write_file", "run_tests", "browser"}
+        if unknown:
+            raise ValueError(f"unknown permitted actions: {sorted(unknown)}")
+        if self.test_command is not None and "run_tests" not in self.permitted_actions:
+            raise ValueError("test_command requires the run_tests action")
+        if self.test_command is not None and (not self.test_command or Path(self.test_command[0]).name not in {"python", "python3", "pytest"}):
+            raise ValueError("test_command must start with python or pytest")
         if any(not c.description.strip() for c in self.criteria):
             raise ValueError("criteria must be testable, non-empty descriptions")
         if len({c.key for c in self.criteria}) != len(self.criteria):
