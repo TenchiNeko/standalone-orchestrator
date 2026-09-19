@@ -1,0 +1,9 @@
+{
+  "goal": "Repair the greeting implementation so the frozen unittest contract passes; inspect before editing and do not change the test.",
+  "workspace": "examples/workspace",
+  "permitted_files": ["hello.py", "test_hello.py"],
+  "permitted_actions": ["read_file", "write_file", "run_tests"],
+  "criteria": [{"key": "tests", "description": "the frozen greeting unittest passes"}],
+  "budget_limit": 8,
+  "test_command": ["python", "-m", "unittest", "test_hello", "-v"]
+}
