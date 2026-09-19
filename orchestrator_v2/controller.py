@@ -6,13 +6,15 @@ from pathlib import Path
 
 from .jev import JevAdapter
 from .ocr import OCRDelegation
+from .decisions import DecisionProvider, DeterministicDecisionProvider
 from .state import Criterion, Phase, StateStore, Task, TaskContract, new_task, source_hash
 from .tools import ToolError, ToolRegistry, WorkspaceTools
 
 
 class Controller:
-    def __init__(self, state_dir: Path, qwen=None, jev_mode: str = "off"):
-        self.state_dir = state_dir; self.store = StateStore(state_dir / "state.sqlite3"); self.qwen = qwen; self.jev = JevAdapter(jev_mode); self.ocr = OCRDelegation()
+    def __init__(self, state_dir: Path, qwen=None, jev_mode: str = "off", decision_provider: DecisionProvider | None = None, decision_mode: str = "shadow"):
+        if decision_mode not in {"shadow", "advisory"}: raise ValueError("decision_mode must be shadow or advisory")
+        self.state_dir = state_dir; self.store = StateStore(state_dir / "state.sqlite3"); self.qwen = qwen; self.jev = JevAdapter(jev_mode); self.ocr = OCRDelegation(); self.decision_provider = decision_provider or DeterministicDecisionProvider(); self.decision_mode = decision_mode
 
     def intake(self, contract: TaskContract, workspace: Path, budget: int = 12) -> Task:
         task = new_task(contract, workspace, budget); self.store.save_task(task); self.store.event(task.task_id, "intake", {"phase": task.phase.value, "source_hash": source_hash(workspace)})
@@ -26,6 +28,7 @@ class Controller:
         review_ok = not review
         self._phase(task, Phase.INSPECT); self.store.evidence(task.task_id, "inspect", root, {"files": sorted(p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file() and ".git" not in p.parts)})
         self._phase(task, Phase.PLAN); self.store.evidence(task.task_id, "plan", root, {"criteria": [c.description for c in task.contract.criteria]}, task.contract.permitted_files)
+        self._decision_probe(task, root)
         if self.qwen and task.budget_calls < task.budget_limit:
             response = self.qwen.chat([{"role": "system", "content": "Return a concise implementation plan. Do not claim execution or completion."}, {"role": "user", "content": json.dumps({"goal": task.contract.goal, "criteria": [c.description for c in task.contract.criteria]})}], max_tokens=350)
             task.budget_calls += 1; self.store.evidence(task.task_id, "qwen_plan", root, {"content": response.content, "usage": response.usage, "finish_reason": response.finish_reason, "elapsed": response.elapsed}, task.contract.permitted_files)
@@ -60,6 +63,20 @@ class Controller:
                     c.status = "advisory"
             task.phase = Phase.COMPLETE
         self.store.save_task(task); return task
+
+    def _decision_probe(self, task: Task, root: Path) -> None:
+        questions = {"next_read_only": {"type": "choice", "instructions": "Choose the next low-risk read-only supervisory direction. Do not authorize edits, retries, test skipping, scope changes, or completion.", "criteria": {"VERIFY": "Check a concrete missing fact or current test result.", "DIAGNOSE": "Classify an observed failure before choosing another check.", "REVIEW": "Inspect existing evidence or a bounded review finding.", "ESCALATE": "Evidence is insufficient and a human or explicit blocker is needed."}}}
+        state = json.dumps({"goal": task.contract.goal, "phase": task.phase.value, "unresolved": task.unresolved, "required_criteria": [c.description for c in task.contract.criteria if c.required]}, sort_keys=True)
+        try:
+            batch = self.decision_provider.decide(state, questions)
+        except Exception as exc:
+            self.store.event(task.task_id, "decision_unavailable", {"provider": self.decision_provider.name, "error": type(exc).__name__})
+            return
+        if not batch.decisions:
+            return
+        payload = {"provider": batch.provider, "mode": self.decision_mode, "authority": "shadow-only", "latency": batch.latency, "decisions": [d.__dict__ for d in batch.decisions], "metadata": batch.metadata}
+        ref = self.store.evidence(task.task_id, "decision", root, payload, task.contract.permitted_files)
+        self.store.event(task.task_id, "decision_judgment", {"ref": ref, "provider": batch.provider, "mode": self.decision_mode, "authority": "shadow-only"})
 
     def _bounded_worker(self, task: Task, root: Path, tools: WorkspaceTools) -> None:
         """Run a short native-tool loop; state and filesystem remain coordinator-owned."""

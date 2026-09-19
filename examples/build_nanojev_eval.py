@@ -1,0 +1,138 @@
+"""Build a frozen local NanoJev evaluation set; no model is called here."""
+from __future__ import annotations
+import json
+from pathlib import Path
+
+FAMILIES = {
+    "operation_result": (["SUCCESS", "FAILURE", "UNCERTAIN"], [
+        ("SUCCESS", "Write returned success and a fresh read contains the requested bytes.", "Classify whether the operation result is established."),
+        ("FAILURE", "Write exited 1 and the target hash is unchanged.", "Classify the operation result."),
+        ("UNCERTAIN", "A non-idempotent request timed out after sending; the response is missing.", "Classify the operation result without inferring commit."),
+        ("UNCERTAIN", "Browser click returned an empty response and no current screenshot exists.", "Classify the operation result."),
+        ("SUCCESS", "A post-edit test exited 0 and independently reads the changed behavior.", "Classify the operation result."),
+        ("FAILURE", "Permission was denied before the destination opened.", "Classify the operation result."),
+        ("UNCERTAIN", "The process died while stdout was collected; no postcondition is known.", "Classify the operation result."),
+        ("SUCCESS", "A second query confirms the newly inserted record and exact value.", "Classify the operation result."),
+        ("FAILURE", "The parser rejected the file and created no output artifact.", "Classify the operation result."),
+        ("UNCERTAIN", "A proxy returned 502 after the request may have reached the service.", "Classify the operation result."),
+        ("SUCCESS", "The new screenshot shows the expected indicator and fixture state agrees.", "Classify the operation result."),
+        ("FAILURE", "The command was rejected before execution by the allowlist.", "Classify the operation result."),
+        ("UNCERTAIN", "Output is truncated exactly where the commit result would appear.", "Classify the operation result."),
+        ("SUCCESS", "Verification query and file hash match the intended mutation.", "Classify the operation result."),
+        ("FAILURE", "The final assertion explicitly reports the expected state was absent.", "Classify the operation result."),
+    ]),
+    "progress_status": (["NEW_EVIDENCE", "STATE_CHANGED", "NO_NEW_EVIDENCE", "REPEATING"], [
+        ("NEW_EVIDENCE", "A fresh read reveals an unseen stack-trace line.", "Classify the progress status."),
+        ("STATE_CHANGED", "The source hash changed after the approved edit.", "Classify the progress status."),
+        ("NO_NEW_EVIDENCE", "The same output and source hash were recorded again.", "Classify the progress status."),
+        ("REPEATING", "The identical read/test sequence ran three times without new evidence.", "Classify the progress status."),
+        ("NEW_EVIDENCE", "A controlled reproduction fails in a different function than the original trace.", "Classify the progress status."),
+        ("STATE_CHANGED", "The browser screenshot hash differs after the click.", "Classify the progress status."),
+        ("NO_NEW_EVIDENCE", "A second lookup returns the same record and timestamp.", "Classify the progress status."),
+        ("REPEATING", "The same rejected hypothesis is proposed after its disproof.", "Classify the progress status."),
+        ("NEW_EVIDENCE", "A previously unrun test supplies an independent failure.", "Classify the progress status."),
+        ("STATE_CHANGED", "The dependency lockfile changed under the permitted repair.", "Classify the progress status."),
+        ("NO_NEW_EVIDENCE", "A timeout is retried without changing input or deadline.", "Classify the progress status."),
+        ("REPEATING", "Two turns reread the same unchanged log range.", "Classify the progress status."),
+        ("NEW_EVIDENCE", "The authoritative health endpoint returns a new status.", "Classify the progress status."),
+        ("STATE_CHANGED", "A new artifact appears and its checksum is recorded.", "Classify the progress status."),
+        ("NO_NEW_EVIDENCE", "Only model prose changed; all observed facts are identical.", "Classify the progress status."),
+    ]),
+    "failure_source": (["CODE", "TEST", "TOOL", "ENVIRONMENT", "REQUIREMENT", "UNKNOWN"], [
+        ("CODE", "A fixed fixture fails because a function returns the wrong allowed-input value.", "Classify the primary failure source."),
+        ("TEST", "Implementation matches the contract but the assertion expects an obsolete output.", "Classify the primary failure source."),
+        ("TOOL", "The runner passed malformed arguments and never invoked the program.", "Classify the primary failure source."),
+        ("ENVIRONMENT", "The test fails because the local service port is unavailable.", "Classify the primary failure source."),
+        ("REQUIREMENT", "Two accepted criteria require mutually exclusive outputs.", "Classify the primary failure source."),
+        ("UNKNOWN", "The only evidence is a confident sentence with no command result.", "Classify the primary failure source."),
+        ("CODE", "A regression points to an off-by-one branch in a clean reproduction.", "Classify the primary failure source."),
+        ("TEST", "The test imports a missing helper because fixture setup is incomplete.", "Classify the primary failure source."),
+        ("TOOL", "The wrapper swallowed the exit status and returned an invalid result shape.", "Classify the primary failure source."),
+        ("ENVIRONMENT", "The interpreter lacks a required module while source is valid.", "Classify the primary failure source."),
+        ("REQUIREMENT", "Requested behavior conflicts with an explicit safety constraint.", "Classify the primary failure source."),
+        ("UNKNOWN", "Output is truncated before the traceback and no reproduction exists.", "Classify the primary failure source."),
+        ("CODE", "A new implementation edit makes an independent regression fail.", "Classify the primary failure source."),
+        ("ENVIRONMENT", "The browser fixture cannot launch because its executable is absent.", "Classify the primary failure source."),
+        ("UNKNOWN", "A plausible log line has no version or timestamp to correlate.", "Classify the primary failure source."),
+    ]),
+    "hypothesis_status": (["NEW", "ALREADY_TESTED", "REJECTED", "INSUFFICIENT_EVIDENCE"], [
+        ("NEW", "No event examined whether the parser receives an empty list.", "Classify the hypothesis status."),
+        ("ALREADY_TESTED", "The exact hypothesis was tested against the unchanged fixture.", "Classify the hypothesis status."),
+        ("REJECTED", "A controlled reproduction disproved the proposed parsing cause.", "Classify the hypothesis status."),
+        ("INSUFFICIENT_EVIDENCE", "A race is proposed but no concurrent trace or reproduction exists.", "Classify the hypothesis status."),
+        ("NEW", "Current evidence has not examined stale screenshot reuse.", "Classify the hypothesis status."),
+        ("ALREADY_TESTED", "A clean run measured the suspected command with the same inputs.", "Classify the hypothesis status."),
+        ("REJECTED", "An environment check passed, ruling out the proposed missing binary.", "Classify the hypothesis status."),
+        ("INSUFFICIENT_EVIDENCE", "The only support is an uncited model interpretation.", "Classify the hypothesis status."),
+        ("NEW", "No event checks whether the write response was lost after commit.", "Classify the hypothesis status."),
+        ("ALREADY_TESTED", "The test ran after the latest source hash and is current.", "Classify the hypothesis status."),
+        ("REJECTED", "The idempotency journal proves one attempt, not a duplicate.", "Classify the hypothesis status."),
+        ("INSUFFICIENT_EVIDENCE", "The failure may be code or environment, but the discriminating check is missing.", "Classify the hypothesis status."),
+        ("NEW", "The review has not checked the error path introduced by this change.", "Classify the hypothesis status."),
+        ("ALREADY_TESTED", "The same source and command were already captured.", "Classify the hypothesis status."),
+        ("REJECTED", "The proposed cause contradicts the verified postcondition.", "Classify the hypothesis status."),
+    ]),
+    "next_investigation": (["VERIFY", "DIAGNOSE", "REVIEW", "ESCALATE"], [
+        ("VERIFY", "A required test has not run after the last edit.", "Choose the next read-only investigation."),
+        ("DIAGNOSE", "A test failed but code and environment causes are not separated.", "Choose the next read-only investigation."),
+        ("REVIEW", "A bounded OCR finding identifies a suspicious line needing evidence.", "Choose the next read-only investigation."),
+        ("ESCALATE", "A mutation result is unknown and no authoritative postcondition exists.", "Choose the next read-only investigation."),
+        ("VERIFY", "A screenshot exists but the final state has not been checked.", "Choose the next read-only investigation."),
+        ("DIAGNOSE", "Two independent checks disagree about one failure.", "Choose the next read-only investigation."),
+        ("REVIEW", "The changed diff is small and its applicable rule was not applied.", "Choose the next read-only investigation."),
+        ("ESCALATE", "The task requests an action outside permitted scope.", "Choose the next read-only investigation."),
+        ("VERIFY", "A command claims success but lacks the expected artifact.", "Choose the next read-only investigation."),
+        ("DIAGNOSE", "The same symptom has two plausible causes with different safe checks.", "Choose the next read-only investigation."),
+        ("REVIEW", "A test passed before an edit and must be checked against the new hash.", "Choose the next read-only investigation."),
+        ("ESCALATE", "A destructive retry would be required to resolve ambiguity.", "Choose the next read-only investigation."),
+        ("VERIFY", "A local health endpoint can establish service readiness.", "Choose the next read-only investigation."),
+        ("DIAGNOSE", "The tool result is malformed and its producer needs classification.", "Choose the next read-only investigation."),
+        ("REVIEW", "A clean file is adjacent to a changed file and needs scope review.", "Choose the next read-only investigation."),
+    ]),
+    "review_finding": (["SUPPORTED", "UNSUPPORTED", "INSUFFICIENT_EVIDENCE"], [
+        ("SUPPORTED", "The finding cites a reachable path and a regression reproduces it.", "Classify whether the review finding is supported."),
+        ("UNSUPPORTED", "The cited line no longer exists and no current reproduction fails.", "Classify whether the review finding is supported."),
+        ("INSUFFICIENT_EVIDENCE", "Only a model explanation exists; no supporting check was run.", "Classify whether the review finding is supported."),
+        ("SUPPORTED", "An attacker-controlled value reaches the cited unsafe path in a fixture.", "Classify whether the review finding is supported."),
+        ("UNSUPPORTED", "The warning assumes a nullable value forbidden by the validated boundary.", "Classify whether the review finding is supported."),
+        ("INSUFFICIENT_EVIDENCE", "OCR omits the surrounding function and no source read followed it.", "Classify whether the review finding is supported."),
+        ("SUPPORTED", "The changed branch skips an error check and a test catches it.", "Classify whether the review finding is supported."),
+        ("UNSUPPORTED", "The alleged bug is in an unchanged generated file outside scope.", "Classify whether the review finding is supported."),
+        ("INSUFFICIENT_EVIDENCE", "The report says 'might fail' without an input or observed failure.", "Classify whether the review finding is supported."),
+        ("SUPPORTED", "A clean reproduction shows the incorrect output at the cited location.", "Classify whether the review finding is supported."),
+        ("UNSUPPORTED", "The suggested fix violates a stated requirement; behavior is intentional.", "Classify whether the review finding is supported."),
+        ("INSUFFICIENT_EVIDENCE", "The source line is real but no data-flow evidence connects it to the defect.", "Classify whether the review finding is supported."),
+        ("SUPPORTED", "An independent test fails only after the cited change and passes with its correction.", "Classify whether the review finding is supported."),
+        ("UNSUPPORTED", "The finding is only a style preference with no correctness mechanism.", "Classify whether the review finding is supported."),
+        ("INSUFFICIENT_EVIDENCE", "The finding relies on a truncated diff and cannot identify the affected path.", "Classify whether the review finding is supported."),
+    ]),
+    "completion_support": (["EVIDENCE_SUFFICIENT", "EVIDENCE_INCOMPLETE", "BLOCKED"], [
+        ("EVIDENCE_SUFFICIENT", "Required tests pass on the current hash and final visual state matches the oracle.", "Classify completion support; this is advisory only."),
+        ("EVIDENCE_INCOMPLETE", "The implementation is edited but the required post-edit test has not run.", "Classify completion support; this is advisory only."),
+        ("BLOCKED", "The permitted test command fails and cannot safely satisfy the contract.", "Classify completion support; this is advisory only."),
+        ("EVIDENCE_SUFFICIENT", "All required criteria have current evidence and no unresolved operations remain.", "Classify completion support; this is advisory only."),
+        ("EVIDENCE_INCOMPLETE", "A final message exists but the only test predates the latest edit.", "Classify completion support; this is advisory only."),
+        ("BLOCKED", "A non-idempotent write has unknown outcome and repeating it is unsafe.", "Classify completion support; this is advisory only."),
+        ("EVIDENCE_SUFFICIENT", "Final test, source hash, and independent state check agree.", "Classify completion support; this is advisory only."),
+        ("EVIDENCE_INCOMPLETE", "OCR returned no findings but required behavioral tests were skipped.", "Classify completion support; this is advisory only."),
+        ("BLOCKED", "The task requests files outside its permitted scope.", "Classify completion support; this is advisory only."),
+        ("EVIDENCE_SUFFICIENT", "The bounded repair passed its frozen regression and cites the result.", "Classify completion support; this is advisory only."),
+        ("EVIDENCE_INCOMPLETE", "The screenshot is stale relative to the current browser state.", "Classify completion support; this is advisory only."),
+        ("BLOCKED", "The required fixture is unavailable and no substitute is authorized.", "Classify completion support; this is advisory only."),
+        ("EVIDENCE_SUFFICIENT", "Every required check is current and tied to the final revision.", "Classify completion support; this is advisory only."),
+        ("EVIDENCE_INCOMPLETE", "A tool call was announced but no result exists in the event log.", "Classify completion support; this is advisory only."),
+        ("BLOCKED", "Evidence contradicts claimed success and authorized checks are exhausted.", "Classify completion support; this is advisory only."),
+    ]),
+}
+
+def build() -> list[dict]:
+    rows = []
+    for family, (candidates, items) in FAMILIES.items():
+        for index, (gold, state, instruction) in enumerate(items, 1):
+            rows.append({"id": f"{family}-{index:02d}", "family": family, "split": "development" if index <= 10 else "final", "state": state, "gold": gold, "question": instruction, "candidates": candidates})
+    return rows
+
+if __name__ == "__main__":
+    out = Path(__file__).with_name("nanojev_eval.json")
+    rows = build(); out.write_text(json.dumps(rows, indent=2, ensure_ascii=False) + "\n")
+    print(f"wrote {len(rows)} manually authored cases to {out}")

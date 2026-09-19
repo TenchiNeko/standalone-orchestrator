@@ -8,6 +8,11 @@ The Qwen adapter is a single authenticated OpenAI-compatible request path. The c
 
 OCR starts in delegation mode: deterministic `ocr delegate preview/rule` selection only. Findings are candidates and require independent checks. OCR-managed loops are deliberately not nested into v2.
 
-Jev is optional. `off` is the default; `shadow` records typed judgments without routing changes; `advisory` is reserved for low-risk diagnostics. Jev cannot authorize mutations or completion.
+Decision supervision is fully local by default. `--decision-provider off` is
+the deterministic baseline; `--decision-provider nanojev --decision-mode
+shadow` records NanoJev distributions without routing changes. NanoJev has no
+authority over mutations, retries, tests, scope, or completion. The TypeSafe
+Jev adapter remains optional reference code (`--jev` is off by default) and
+does not require a credential for the normal install.
 
 Vision is explicit: `BrowserTools` records URL, viewport, capture time/path, and SHA-256; its local-only sequence supports bounded navigate/click/type/inspect/screenshot steps; `QwenAdapter.chat_with_image` sends screenshot bytes as an image input. A filename, DOM text, or pixel-analysis result is not accepted as visual evidence.

@@ -1,0 +1,1457 @@
+[
+  {
+    "id": "operation_result-01",
+    "family": "operation_result",
+    "split": "development",
+    "state": "Write returned success and a fresh read contains the requested bytes.",
+    "gold": "SUCCESS",
+    "question": "Classify whether the operation result is established.",
+    "candidates": [
+      "SUCCESS",
+      "FAILURE",
+      "UNCERTAIN"
+    ]
+  },
+  {
+    "id": "operation_result-02",
+    "family": "operation_result",
+    "split": "development",
+    "state": "Write exited 1 and the target hash is unchanged.",
+    "gold": "FAILURE",
+    "question": "Classify the operation result.",
+    "candidates": [
+      "SUCCESS",
+      "FAILURE",
+      "UNCERTAIN"
+    ]
+  },
+  {
+    "id": "operation_result-03",
+    "family": "operation_result",
+    "split": "development",
+    "state": "A non-idempotent request timed out after sending; the response is missing.",
+    "gold": "UNCERTAIN",
+    "question": "Classify the operation result without inferring commit.",
+    "candidates": [
+      "SUCCESS",
+      "FAILURE",
+      "UNCERTAIN"
+    ]
+  },
+  {
+    "id": "operation_result-04",
+    "family": "operation_result",
+    "split": "development",
+    "state": "Browser click returned an empty response and no current screenshot exists.",
+    "gold": "UNCERTAIN",
+    "question": "Classify the operation result.",
+    "candidates": [
+      "SUCCESS",
+      "FAILURE",
+      "UNCERTAIN"
+    ]
+  },
+  {
+    "id": "operation_result-05",
+    "family": "operation_result",
+    "split": "development",
+    "state": "A post-edit test exited 0 and independently reads the changed behavior.",
+    "gold": "SUCCESS",
+    "question": "Classify the operation result.",
+    "candidates": [
+      "SUCCESS",
+      "FAILURE",
+      "UNCERTAIN"
+    ]
+  },
+  {
+    "id": "operation_result-06",
+    "family": "operation_result",
+    "split": "development",
+    "state": "Permission was denied before the destination opened.",
+    "gold": "FAILURE",
+    "question": "Classify the operation result.",
+    "candidates": [
+      "SUCCESS",
+      "FAILURE",
+      "UNCERTAIN"
+    ]
+  },
+  {
+    "id": "operation_result-07",
+    "family": "operation_result",
+    "split": "development",
+    "state": "The process died while stdout was collected; no postcondition is known.",
+    "gold": "UNCERTAIN",
+    "question": "Classify the operation result.",
+    "candidates": [
+      "SUCCESS",
+      "FAILURE",
+      "UNCERTAIN"
+    ]
+  },
+  {
+    "id": "operation_result-08",
+    "family": "operation_result",
+    "split": "development",
+    "state": "A second query confirms the newly inserted record and exact value.",
+    "gold": "SUCCESS",
+    "question": "Classify the operation result.",
+    "candidates": [
+      "SUCCESS",
+      "FAILURE",
+      "UNCERTAIN"
+    ]
+  },
+  {
+    "id": "operation_result-09",
+    "family": "operation_result",
+    "split": "development",
+    "state": "The parser rejected the file and created no output artifact.",
+    "gold": "FAILURE",
+    "question": "Classify the operation result.",
+    "candidates": [
+      "SUCCESS",
+      "FAILURE",
+      "UNCERTAIN"
+    ]
+  },
+  {
+    "id": "operation_result-10",
+    "family": "operation_result",
+    "split": "development",
+    "state": "A proxy returned 502 after the request may have reached the service.",
+    "gold": "UNCERTAIN",
+    "question": "Classify the operation result.",
+    "candidates": [
+      "SUCCESS",
+      "FAILURE",
+      "UNCERTAIN"
+    ]
+  },
+  {
+    "id": "operation_result-11",
+    "family": "operation_result",
+    "split": "final",
+    "state": "The new screenshot shows the expected indicator and fixture state agrees.",
+    "gold": "SUCCESS",
+    "question": "Classify the operation result.",
+    "candidates": [
+      "SUCCESS",
+      "FAILURE",
+      "UNCERTAIN"
+    ]
+  },
+  {
+    "id": "operation_result-12",
+    "family": "operation_result",
+    "split": "final",
+    "state": "The command was rejected before execution by the allowlist.",
+    "gold": "FAILURE",
+    "question": "Classify the operation result.",
+    "candidates": [
+      "SUCCESS",
+      "FAILURE",
+      "UNCERTAIN"
+    ]
+  },
+  {
+    "id": "operation_result-13",
+    "family": "operation_result",
+    "split": "final",
+    "state": "Output is truncated exactly where the commit result would appear.",
+    "gold": "UNCERTAIN",
+    "question": "Classify the operation result.",
+    "candidates": [
+      "SUCCESS",
+      "FAILURE",
+      "UNCERTAIN"
+    ]
+  },
+  {
+    "id": "operation_result-14",
+    "family": "operation_result",
+    "split": "final",
+    "state": "Verification query and file hash match the intended mutation.",
+    "gold": "SUCCESS",
+    "question": "Classify the operation result.",
+    "candidates": [
+      "SUCCESS",
+      "FAILURE",
+      "UNCERTAIN"
+    ]
+  },
+  {
+    "id": "operation_result-15",
+    "family": "operation_result",
+    "split": "final",
+    "state": "The final assertion explicitly reports the expected state was absent.",
+    "gold": "FAILURE",
+    "question": "Classify the operation result.",
+    "candidates": [
+      "SUCCESS",
+      "FAILURE",
+      "UNCERTAIN"
+    ]
+  },
+  {
+    "id": "progress_status-01",
+    "family": "progress_status",
+    "split": "development",
+    "state": "A fresh read reveals an unseen stack-trace line.",
+    "gold": "NEW_EVIDENCE",
+    "question": "Classify the progress status.",
+    "candidates": [
+      "NEW_EVIDENCE",
+      "STATE_CHANGED",
+      "NO_NEW_EVIDENCE",
+      "REPEATING"
+    ]
+  },
+  {
+    "id": "progress_status-02",
+    "family": "progress_status",
+    "split": "development",
+    "state": "The source hash changed after the approved edit.",
+    "gold": "STATE_CHANGED",
+    "question": "Classify the progress status.",
+    "candidates": [
+      "NEW_EVIDENCE",
+      "STATE_CHANGED",
+      "NO_NEW_EVIDENCE",
+      "REPEATING"
+    ]
+  },
+  {
+    "id": "progress_status-03",
+    "family": "progress_status",
+    "split": "development",
+    "state": "The same output and source hash were recorded again.",
+    "gold": "NO_NEW_EVIDENCE",
+    "question": "Classify the progress status.",
+    "candidates": [
+      "NEW_EVIDENCE",
+      "STATE_CHANGED",
+      "NO_NEW_EVIDENCE",
+      "REPEATING"
+    ]
+  },
+  {
+    "id": "progress_status-04",
+    "family": "progress_status",
+    "split": "development",
+    "state": "The identical read/test sequence ran three times without new evidence.",
+    "gold": "REPEATING",
+    "question": "Classify the progress status.",
+    "candidates": [
+      "NEW_EVIDENCE",
+      "STATE_CHANGED",
+      "NO_NEW_EVIDENCE",
+      "REPEATING"
+    ]
+  },
+  {
+    "id": "progress_status-05",
+    "family": "progress_status",
+    "split": "development",
+    "state": "A controlled reproduction fails in a different function than the original trace.",
+    "gold": "NEW_EVIDENCE",
+    "question": "Classify the progress status.",
+    "candidates": [
+      "NEW_EVIDENCE",
+      "STATE_CHANGED",
+      "NO_NEW_EVIDENCE",
+      "REPEATING"
+    ]
+  },
+  {
+    "id": "progress_status-06",
+    "family": "progress_status",
+    "split": "development",
+    "state": "The browser screenshot hash differs after the click.",
+    "gold": "STATE_CHANGED",
+    "question": "Classify the progress status.",
+    "candidates": [
+      "NEW_EVIDENCE",
+      "STATE_CHANGED",
+      "NO_NEW_EVIDENCE",
+      "REPEATING"
+    ]
+  },
+  {
+    "id": "progress_status-07",
+    "family": "progress_status",
+    "split": "development",
+    "state": "A second lookup returns the same record and timestamp.",
+    "gold": "NO_NEW_EVIDENCE",
+    "question": "Classify the progress status.",
+    "candidates": [
+      "NEW_EVIDENCE",
+      "STATE_CHANGED",
+      "NO_NEW_EVIDENCE",
+      "REPEATING"
+    ]
+  },
+  {
+    "id": "progress_status-08",
+    "family": "progress_status",
+    "split": "development",
+    "state": "The same rejected hypothesis is proposed after its disproof.",
+    "gold": "REPEATING",
+    "question": "Classify the progress status.",
+    "candidates": [
+      "NEW_EVIDENCE",
+      "STATE_CHANGED",
+      "NO_NEW_EVIDENCE",
+      "REPEATING"
+    ]
+  },
+  {
+    "id": "progress_status-09",
+    "family": "progress_status",
+    "split": "development",
+    "state": "A previously unrun test supplies an independent failure.",
+    "gold": "NEW_EVIDENCE",
+    "question": "Classify the progress status.",
+    "candidates": [
+      "NEW_EVIDENCE",
+      "STATE_CHANGED",
+      "NO_NEW_EVIDENCE",
+      "REPEATING"
+    ]
+  },
+  {
+    "id": "progress_status-10",
+    "family": "progress_status",
+    "split": "development",
+    "state": "The dependency lockfile changed under the permitted repair.",
+    "gold": "STATE_CHANGED",
+    "question": "Classify the progress status.",
+    "candidates": [
+      "NEW_EVIDENCE",
+      "STATE_CHANGED",
+      "NO_NEW_EVIDENCE",
+      "REPEATING"
+    ]
+  },
+  {
+    "id": "progress_status-11",
+    "family": "progress_status",
+    "split": "final",
+    "state": "A timeout is retried without changing input or deadline.",
+    "gold": "NO_NEW_EVIDENCE",
+    "question": "Classify the progress status.",
+    "candidates": [
+      "NEW_EVIDENCE",
+      "STATE_CHANGED",
+      "NO_NEW_EVIDENCE",
+      "REPEATING"
+    ]
+  },
+  {
+    "id": "progress_status-12",
+    "family": "progress_status",
+    "split": "final",
+    "state": "Two turns reread the same unchanged log range.",
+    "gold": "REPEATING",
+    "question": "Classify the progress status.",
+    "candidates": [
+      "NEW_EVIDENCE",
+      "STATE_CHANGED",
+      "NO_NEW_EVIDENCE",
+      "REPEATING"
+    ]
+  },
+  {
+    "id": "progress_status-13",
+    "family": "progress_status",
+    "split": "final",
+    "state": "The authoritative health endpoint returns a new status.",
+    "gold": "NEW_EVIDENCE",
+    "question": "Classify the progress status.",
+    "candidates": [
+      "NEW_EVIDENCE",
+      "STATE_CHANGED",
+      "NO_NEW_EVIDENCE",
+      "REPEATING"
+    ]
+  },
+  {
+    "id": "progress_status-14",
+    "family": "progress_status",
+    "split": "final",
+    "state": "A new artifact appears and its checksum is recorded.",
+    "gold": "STATE_CHANGED",
+    "question": "Classify the progress status.",
+    "candidates": [
+      "NEW_EVIDENCE",
+      "STATE_CHANGED",
+      "NO_NEW_EVIDENCE",
+      "REPEATING"
+    ]
+  },
+  {
+    "id": "progress_status-15",
+    "family": "progress_status",
+    "split": "final",
+    "state": "Only model prose changed; all observed facts are identical.",
+    "gold": "NO_NEW_EVIDENCE",
+    "question": "Classify the progress status.",
+    "candidates": [
+      "NEW_EVIDENCE",
+      "STATE_CHANGED",
+      "NO_NEW_EVIDENCE",
+      "REPEATING"
+    ]
+  },
+  {
+    "id": "failure_source-01",
+    "family": "failure_source",
+    "split": "development",
+    "state": "A fixed fixture fails because a function returns the wrong allowed-input value.",
+    "gold": "CODE",
+    "question": "Classify the primary failure source.",
+    "candidates": [
+      "CODE",
+      "TEST",
+      "TOOL",
+      "ENVIRONMENT",
+      "REQUIREMENT",
+      "UNKNOWN"
+    ]
+  },
+  {
+    "id": "failure_source-02",
+    "family": "failure_source",
+    "split": "development",
+    "state": "Implementation matches the contract but the assertion expects an obsolete output.",
+    "gold": "TEST",
+    "question": "Classify the primary failure source.",
+    "candidates": [
+      "CODE",
+      "TEST",
+      "TOOL",
+      "ENVIRONMENT",
+      "REQUIREMENT",
+      "UNKNOWN"
+    ]
+  },
+  {
+    "id": "failure_source-03",
+    "family": "failure_source",
+    "split": "development",
+    "state": "The runner passed malformed arguments and never invoked the program.",
+    "gold": "TOOL",
+    "question": "Classify the primary failure source.",
+    "candidates": [
+      "CODE",
+      "TEST",
+      "TOOL",
+      "ENVIRONMENT",
+      "REQUIREMENT",
+      "UNKNOWN"
+    ]
+  },
+  {
+    "id": "failure_source-04",
+    "family": "failure_source",
+    "split": "development",
+    "state": "The test fails because the local service port is unavailable.",
+    "gold": "ENVIRONMENT",
+    "question": "Classify the primary failure source.",
+    "candidates": [
+      "CODE",
+      "TEST",
+      "TOOL",
+      "ENVIRONMENT",
+      "REQUIREMENT",
+      "UNKNOWN"
+    ]
+  },
+  {
+    "id": "failure_source-05",
+    "family": "failure_source",
+    "split": "development",
+    "state": "Two accepted criteria require mutually exclusive outputs.",
+    "gold": "REQUIREMENT",
+    "question": "Classify the primary failure source.",
+    "candidates": [
+      "CODE",
+      "TEST",
+      "TOOL",
+      "ENVIRONMENT",
+      "REQUIREMENT",
+      "UNKNOWN"
+    ]
+  },
+  {
+    "id": "failure_source-06",
+    "family": "failure_source",
+    "split": "development",
+    "state": "The only evidence is a confident sentence with no command result.",
+    "gold": "UNKNOWN",
+    "question": "Classify the primary failure source.",
+    "candidates": [
+      "CODE",
+      "TEST",
+      "TOOL",
+      "ENVIRONMENT",
+      "REQUIREMENT",
+      "UNKNOWN"
+    ]
+  },
+  {
+    "id": "failure_source-07",
+    "family": "failure_source",
+    "split": "development",
+    "state": "A regression points to an off-by-one branch in a clean reproduction.",
+    "gold": "CODE",
+    "question": "Classify the primary failure source.",
+    "candidates": [
+      "CODE",
+      "TEST",
+      "TOOL",
+      "ENVIRONMENT",
+      "REQUIREMENT",
+      "UNKNOWN"
+    ]
+  },
+  {
+    "id": "failure_source-08",
+    "family": "failure_source",
+    "split": "development",
+    "state": "The test imports a missing helper because fixture setup is incomplete.",
+    "gold": "TEST",
+    "question": "Classify the primary failure source.",
+    "candidates": [
+      "CODE",
+      "TEST",
+      "TOOL",
+      "ENVIRONMENT",
+      "REQUIREMENT",
+      "UNKNOWN"
+    ]
+  },
+  {
+    "id": "failure_source-09",
+    "family": "failure_source",
+    "split": "development",
+    "state": "The wrapper swallowed the exit status and returned an invalid result shape.",
+    "gold": "TOOL",
+    "question": "Classify the primary failure source.",
+    "candidates": [
+      "CODE",
+      "TEST",
+      "TOOL",
+      "ENVIRONMENT",
+      "REQUIREMENT",
+      "UNKNOWN"
+    ]
+  },
+  {
+    "id": "failure_source-10",
+    "family": "failure_source",
+    "split": "development",
+    "state": "The interpreter lacks a required module while source is valid.",
+    "gold": "ENVIRONMENT",
+    "question": "Classify the primary failure source.",
+    "candidates": [
+      "CODE",
+      "TEST",
+      "TOOL",
+      "ENVIRONMENT",
+      "REQUIREMENT",
+      "UNKNOWN"
+    ]
+  },
+  {
+    "id": "failure_source-11",
+    "family": "failure_source",
+    "split": "final",
+    "state": "Requested behavior conflicts with an explicit safety constraint.",
+    "gold": "REQUIREMENT",
+    "question": "Classify the primary failure source.",
+    "candidates": [
+      "CODE",
+      "TEST",
+      "TOOL",
+      "ENVIRONMENT",
+      "REQUIREMENT",
+      "UNKNOWN"
+    ]
+  },
+  {
+    "id": "failure_source-12",
+    "family": "failure_source",
+    "split": "final",
+    "state": "Output is truncated before the traceback and no reproduction exists.",
+    "gold": "UNKNOWN",
+    "question": "Classify the primary failure source.",
+    "candidates": [
+      "CODE",
+      "TEST",
+      "TOOL",
+      "ENVIRONMENT",
+      "REQUIREMENT",
+      "UNKNOWN"
+    ]
+  },
+  {
+    "id": "failure_source-13",
+    "family": "failure_source",
+    "split": "final",
+    "state": "A new implementation edit makes an independent regression fail.",
+    "gold": "CODE",
+    "question": "Classify the primary failure source.",
+    "candidates": [
+      "CODE",
+      "TEST",
+      "TOOL",
+      "ENVIRONMENT",
+      "REQUIREMENT",
+      "UNKNOWN"
+    ]
+  },
+  {
+    "id": "failure_source-14",
+    "family": "failure_source",
+    "split": "final",
+    "state": "The browser fixture cannot launch because its executable is absent.",
+    "gold": "ENVIRONMENT",
+    "question": "Classify the primary failure source.",
+    "candidates": [
+      "CODE",
+      "TEST",
+      "TOOL",
+      "ENVIRONMENT",
+      "REQUIREMENT",
+      "UNKNOWN"
+    ]
+  },
+  {
+    "id": "failure_source-15",
+    "family": "failure_source",
+    "split": "final",
+    "state": "A plausible log line has no version or timestamp to correlate.",
+    "gold": "UNKNOWN",
+    "question": "Classify the primary failure source.",
+    "candidates": [
+      "CODE",
+      "TEST",
+      "TOOL",
+      "ENVIRONMENT",
+      "REQUIREMENT",
+      "UNKNOWN"
+    ]
+  },
+  {
+    "id": "hypothesis_status-01",
+    "family": "hypothesis_status",
+    "split": "development",
+    "state": "No event examined whether the parser receives an empty list.",
+    "gold": "NEW",
+    "question": "Classify the hypothesis status.",
+    "candidates": [
+      "NEW",
+      "ALREADY_TESTED",
+      "REJECTED",
+      "INSUFFICIENT_EVIDENCE"
+    ]
+  },
+  {
+    "id": "hypothesis_status-02",
+    "family": "hypothesis_status",
+    "split": "development",
+    "state": "The exact hypothesis was tested against the unchanged fixture.",
+    "gold": "ALREADY_TESTED",
+    "question": "Classify the hypothesis status.",
+    "candidates": [
+      "NEW",
+      "ALREADY_TESTED",
+      "REJECTED",
+      "INSUFFICIENT_EVIDENCE"
+    ]
+  },
+  {
+    "id": "hypothesis_status-03",
+    "family": "hypothesis_status",
+    "split": "development",
+    "state": "A controlled reproduction disproved the proposed parsing cause.",
+    "gold": "REJECTED",
+    "question": "Classify the hypothesis status.",
+    "candidates": [
+      "NEW",
+      "ALREADY_TESTED",
+      "REJECTED",
+      "INSUFFICIENT_EVIDENCE"
+    ]
+  },
+  {
+    "id": "hypothesis_status-04",
+    "family": "hypothesis_status",
+    "split": "development",
+    "state": "A race is proposed but no concurrent trace or reproduction exists.",
+    "gold": "INSUFFICIENT_EVIDENCE",
+    "question": "Classify the hypothesis status.",
+    "candidates": [
+      "NEW",
+      "ALREADY_TESTED",
+      "REJECTED",
+      "INSUFFICIENT_EVIDENCE"
+    ]
+  },
+  {
+    "id": "hypothesis_status-05",
+    "family": "hypothesis_status",
+    "split": "development",
+    "state": "Current evidence has not examined stale screenshot reuse.",
+    "gold": "NEW",
+    "question": "Classify the hypothesis status.",
+    "candidates": [
+      "NEW",
+      "ALREADY_TESTED",
+      "REJECTED",
+      "INSUFFICIENT_EVIDENCE"
+    ]
+  },
+  {
+    "id": "hypothesis_status-06",
+    "family": "hypothesis_status",
+    "split": "development",
+    "state": "A clean run measured the suspected command with the same inputs.",
+    "gold": "ALREADY_TESTED",
+    "question": "Classify the hypothesis status.",
+    "candidates": [
+      "NEW",
+      "ALREADY_TESTED",
+      "REJECTED",
+      "INSUFFICIENT_EVIDENCE"
+    ]
+  },
+  {
+    "id": "hypothesis_status-07",
+    "family": "hypothesis_status",
+    "split": "development",
+    "state": "An environment check passed, ruling out the proposed missing binary.",
+    "gold": "REJECTED",
+    "question": "Classify the hypothesis status.",
+    "candidates": [
+      "NEW",
+      "ALREADY_TESTED",
+      "REJECTED",
+      "INSUFFICIENT_EVIDENCE"
+    ]
+  },
+  {
+    "id": "hypothesis_status-08",
+    "family": "hypothesis_status",
+    "split": "development",
+    "state": "The only support is an uncited model interpretation.",
+    "gold": "INSUFFICIENT_EVIDENCE",
+    "question": "Classify the hypothesis status.",
+    "candidates": [
+      "NEW",
+      "ALREADY_TESTED",
+      "REJECTED",
+      "INSUFFICIENT_EVIDENCE"
+    ]
+  },
+  {
+    "id": "hypothesis_status-09",
+    "family": "hypothesis_status",
+    "split": "development",
+    "state": "No event checks whether the write response was lost after commit.",
+    "gold": "NEW",
+    "question": "Classify the hypothesis status.",
+    "candidates": [
+      "NEW",
+      "ALREADY_TESTED",
+      "REJECTED",
+      "INSUFFICIENT_EVIDENCE"
+    ]
+  },
+  {
+    "id": "hypothesis_status-10",
+    "family": "hypothesis_status",
+    "split": "development",
+    "state": "The test ran after the latest source hash and is current.",
+    "gold": "ALREADY_TESTED",
+    "question": "Classify the hypothesis status.",
+    "candidates": [
+      "NEW",
+      "ALREADY_TESTED",
+      "REJECTED",
+      "INSUFFICIENT_EVIDENCE"
+    ]
+  },
+  {
+    "id": "hypothesis_status-11",
+    "family": "hypothesis_status",
+    "split": "final",
+    "state": "The idempotency journal proves one attempt, not a duplicate.",
+    "gold": "REJECTED",
+    "question": "Classify the hypothesis status.",
+    "candidates": [
+      "NEW",
+      "ALREADY_TESTED",
+      "REJECTED",
+      "INSUFFICIENT_EVIDENCE"
+    ]
+  },
+  {
+    "id": "hypothesis_status-12",
+    "family": "hypothesis_status",
+    "split": "final",
+    "state": "The failure may be code or environment, but the discriminating check is missing.",
+    "gold": "INSUFFICIENT_EVIDENCE",
+    "question": "Classify the hypothesis status.",
+    "candidates": [
+      "NEW",
+      "ALREADY_TESTED",
+      "REJECTED",
+      "INSUFFICIENT_EVIDENCE"
+    ]
+  },
+  {
+    "id": "hypothesis_status-13",
+    "family": "hypothesis_status",
+    "split": "final",
+    "state": "The review has not checked the error path introduced by this change.",
+    "gold": "NEW",
+    "question": "Classify the hypothesis status.",
+    "candidates": [
+      "NEW",
+      "ALREADY_TESTED",
+      "REJECTED",
+      "INSUFFICIENT_EVIDENCE"
+    ]
+  },
+  {
+    "id": "hypothesis_status-14",
+    "family": "hypothesis_status",
+    "split": "final",
+    "state": "The same source and command were already captured.",
+    "gold": "ALREADY_TESTED",
+    "question": "Classify the hypothesis status.",
+    "candidates": [
+      "NEW",
+      "ALREADY_TESTED",
+      "REJECTED",
+      "INSUFFICIENT_EVIDENCE"
+    ]
+  },
+  {
+    "id": "hypothesis_status-15",
+    "family": "hypothesis_status",
+    "split": "final",
+    "state": "The proposed cause contradicts the verified postcondition.",
+    "gold": "REJECTED",
+    "question": "Classify the hypothesis status.",
+    "candidates": [
+      "NEW",
+      "ALREADY_TESTED",
+      "REJECTED",
+      "INSUFFICIENT_EVIDENCE"
+    ]
+  },
+  {
+    "id": "next_investigation-01",
+    "family": "next_investigation",
+    "split": "development",
+    "state": "A required test has not run after the last edit.",
+    "gold": "VERIFY",
+    "question": "Choose the next read-only investigation.",
+    "candidates": [
+      "VERIFY",
+      "DIAGNOSE",
+      "REVIEW",
+      "ESCALATE"
+    ]
+  },
+  {
+    "id": "next_investigation-02",
+    "family": "next_investigation",
+    "split": "development",
+    "state": "A test failed but code and environment causes are not separated.",
+    "gold": "DIAGNOSE",
+    "question": "Choose the next read-only investigation.",
+    "candidates": [
+      "VERIFY",
+      "DIAGNOSE",
+      "REVIEW",
+      "ESCALATE"
+    ]
+  },
+  {
+    "id": "next_investigation-03",
+    "family": "next_investigation",
+    "split": "development",
+    "state": "A bounded OCR finding identifies a suspicious line needing evidence.",
+    "gold": "REVIEW",
+    "question": "Choose the next read-only investigation.",
+    "candidates": [
+      "VERIFY",
+      "DIAGNOSE",
+      "REVIEW",
+      "ESCALATE"
+    ]
+  },
+  {
+    "id": "next_investigation-04",
+    "family": "next_investigation",
+    "split": "development",
+    "state": "A mutation result is unknown and no authoritative postcondition exists.",
+    "gold": "ESCALATE",
+    "question": "Choose the next read-only investigation.",
+    "candidates": [
+      "VERIFY",
+      "DIAGNOSE",
+      "REVIEW",
+      "ESCALATE"
+    ]
+  },
+  {
+    "id": "next_investigation-05",
+    "family": "next_investigation",
+    "split": "development",
+    "state": "A screenshot exists but the final state has not been checked.",
+    "gold": "VERIFY",
+    "question": "Choose the next read-only investigation.",
+    "candidates": [
+      "VERIFY",
+      "DIAGNOSE",
+      "REVIEW",
+      "ESCALATE"
+    ]
+  },
+  {
+    "id": "next_investigation-06",
+    "family": "next_investigation",
+    "split": "development",
+    "state": "Two independent checks disagree about one failure.",
+    "gold": "DIAGNOSE",
+    "question": "Choose the next read-only investigation.",
+    "candidates": [
+      "VERIFY",
+      "DIAGNOSE",
+      "REVIEW",
+      "ESCALATE"
+    ]
+  },
+  {
+    "id": "next_investigation-07",
+    "family": "next_investigation",
+    "split": "development",
+    "state": "The changed diff is small and its applicable rule was not applied.",
+    "gold": "REVIEW",
+    "question": "Choose the next read-only investigation.",
+    "candidates": [
+      "VERIFY",
+      "DIAGNOSE",
+      "REVIEW",
+      "ESCALATE"
+    ]
+  },
+  {
+    "id": "next_investigation-08",
+    "family": "next_investigation",
+    "split": "development",
+    "state": "The task requests an action outside permitted scope.",
+    "gold": "ESCALATE",
+    "question": "Choose the next read-only investigation.",
+    "candidates": [
+      "VERIFY",
+      "DIAGNOSE",
+      "REVIEW",
+      "ESCALATE"
+    ]
+  },
+  {
+    "id": "next_investigation-09",
+    "family": "next_investigation",
+    "split": "development",
+    "state": "A command claims success but lacks the expected artifact.",
+    "gold": "VERIFY",
+    "question": "Choose the next read-only investigation.",
+    "candidates": [
+      "VERIFY",
+      "DIAGNOSE",
+      "REVIEW",
+      "ESCALATE"
+    ]
+  },
+  {
+    "id": "next_investigation-10",
+    "family": "next_investigation",
+    "split": "development",
+    "state": "The same symptom has two plausible causes with different safe checks.",
+    "gold": "DIAGNOSE",
+    "question": "Choose the next read-only investigation.",
+    "candidates": [
+      "VERIFY",
+      "DIAGNOSE",
+      "REVIEW",
+      "ESCALATE"
+    ]
+  },
+  {
+    "id": "next_investigation-11",
+    "family": "next_investigation",
+    "split": "final",
+    "state": "A test passed before an edit and must be checked against the new hash.",
+    "gold": "REVIEW",
+    "question": "Choose the next read-only investigation.",
+    "candidates": [
+      "VERIFY",
+      "DIAGNOSE",
+      "REVIEW",
+      "ESCALATE"
+    ]
+  },
+  {
+    "id": "next_investigation-12",
+    "family": "next_investigation",
+    "split": "final",
+    "state": "A destructive retry would be required to resolve ambiguity.",
+    "gold": "ESCALATE",
+    "question": "Choose the next read-only investigation.",
+    "candidates": [
+      "VERIFY",
+      "DIAGNOSE",
+      "REVIEW",
+      "ESCALATE"
+    ]
+  },
+  {
+    "id": "next_investigation-13",
+    "family": "next_investigation",
+    "split": "final",
+    "state": "A local health endpoint can establish service readiness.",
+    "gold": "VERIFY",
+    "question": "Choose the next read-only investigation.",
+    "candidates": [
+      "VERIFY",
+      "DIAGNOSE",
+      "REVIEW",
+      "ESCALATE"
+    ]
+  },
+  {
+    "id": "next_investigation-14",
+    "family": "next_investigation",
+    "split": "final",
+    "state": "The tool result is malformed and its producer needs classification.",
+    "gold": "DIAGNOSE",
+    "question": "Choose the next read-only investigation.",
+    "candidates": [
+      "VERIFY",
+      "DIAGNOSE",
+      "REVIEW",
+      "ESCALATE"
+    ]
+  },
+  {
+    "id": "next_investigation-15",
+    "family": "next_investigation",
+    "split": "final",
+    "state": "A clean file is adjacent to a changed file and needs scope review.",
+    "gold": "REVIEW",
+    "question": "Choose the next read-only investigation.",
+    "candidates": [
+      "VERIFY",
+      "DIAGNOSE",
+      "REVIEW",
+      "ESCALATE"
+    ]
+  },
+  {
+    "id": "review_finding-01",
+    "family": "review_finding",
+    "split": "development",
+    "state": "The finding cites a reachable path and a regression reproduces it.",
+    "gold": "SUPPORTED",
+    "question": "Classify whether the review finding is supported.",
+    "candidates": [
+      "SUPPORTED",
+      "UNSUPPORTED",
+      "INSUFFICIENT_EVIDENCE"
+    ]
+  },
+  {
+    "id": "review_finding-02",
+    "family": "review_finding",
+    "split": "development",
+    "state": "The cited line no longer exists and no current reproduction fails.",
+    "gold": "UNSUPPORTED",
+    "question": "Classify whether the review finding is supported.",
+    "candidates": [
+      "SUPPORTED",
+      "UNSUPPORTED",
+      "INSUFFICIENT_EVIDENCE"
+    ]
+  },
+  {
+    "id": "review_finding-03",
+    "family": "review_finding",
+    "split": "development",
+    "state": "Only a model explanation exists; no supporting check was run.",
+    "gold": "INSUFFICIENT_EVIDENCE",
+    "question": "Classify whether the review finding is supported.",
+    "candidates": [
+      "SUPPORTED",
+      "UNSUPPORTED",
+      "INSUFFICIENT_EVIDENCE"
+    ]
+  },
+  {
+    "id": "review_finding-04",
+    "family": "review_finding",
+    "split": "development",
+    "state": "An attacker-controlled value reaches the cited unsafe path in a fixture.",
+    "gold": "SUPPORTED",
+    "question": "Classify whether the review finding is supported.",
+    "candidates": [
+      "SUPPORTED",
+      "UNSUPPORTED",
+      "INSUFFICIENT_EVIDENCE"
+    ]
+  },
+  {
+    "id": "review_finding-05",
+    "family": "review_finding",
+    "split": "development",
+    "state": "The warning assumes a nullable value forbidden by the validated boundary.",
+    "gold": "UNSUPPORTED",
+    "question": "Classify whether the review finding is supported.",
+    "candidates": [
+      "SUPPORTED",
+      "UNSUPPORTED",
+      "INSUFFICIENT_EVIDENCE"
+    ]
+  },
+  {
+    "id": "review_finding-06",
+    "family": "review_finding",
+    "split": "development",
+    "state": "OCR omits the surrounding function and no source read followed it.",
+    "gold": "INSUFFICIENT_EVIDENCE",
+    "question": "Classify whether the review finding is supported.",
+    "candidates": [
+      "SUPPORTED",
+      "UNSUPPORTED",
+      "INSUFFICIENT_EVIDENCE"
+    ]
+  },
+  {
+    "id": "review_finding-07",
+    "family": "review_finding",
+    "split": "development",
+    "state": "The changed branch skips an error check and a test catches it.",
+    "gold": "SUPPORTED",
+    "question": "Classify whether the review finding is supported.",
+    "candidates": [
+      "SUPPORTED",
+      "UNSUPPORTED",
+      "INSUFFICIENT_EVIDENCE"
+    ]
+  },
+  {
+    "id": "review_finding-08",
+    "family": "review_finding",
+    "split": "development",
+    "state": "The alleged bug is in an unchanged generated file outside scope.",
+    "gold": "UNSUPPORTED",
+    "question": "Classify whether the review finding is supported.",
+    "candidates": [
+      "SUPPORTED",
+      "UNSUPPORTED",
+      "INSUFFICIENT_EVIDENCE"
+    ]
+  },
+  {
+    "id": "review_finding-09",
+    "family": "review_finding",
+    "split": "development",
+    "state": "The report says 'might fail' without an input or observed failure.",
+    "gold": "INSUFFICIENT_EVIDENCE",
+    "question": "Classify whether the review finding is supported.",
+    "candidates": [
+      "SUPPORTED",
+      "UNSUPPORTED",
+      "INSUFFICIENT_EVIDENCE"
+    ]
+  },
+  {
+    "id": "review_finding-10",
+    "family": "review_finding",
+    "split": "development",
+    "state": "A clean reproduction shows the incorrect output at the cited location.",
+    "gold": "SUPPORTED",
+    "question": "Classify whether the review finding is supported.",
+    "candidates": [
+      "SUPPORTED",
+      "UNSUPPORTED",
+      "INSUFFICIENT_EVIDENCE"
+    ]
+  },
+  {
+    "id": "review_finding-11",
+    "family": "review_finding",
+    "split": "final",
+    "state": "The suggested fix violates a stated requirement; behavior is intentional.",
+    "gold": "UNSUPPORTED",
+    "question": "Classify whether the review finding is supported.",
+    "candidates": [
+      "SUPPORTED",
+      "UNSUPPORTED",
+      "INSUFFICIENT_EVIDENCE"
+    ]
+  },
+  {
+    "id": "review_finding-12",
+    "family": "review_finding",
+    "split": "final",
+    "state": "The source line is real but no data-flow evidence connects it to the defect.",
+    "gold": "INSUFFICIENT_EVIDENCE",
+    "question": "Classify whether the review finding is supported.",
+    "candidates": [
+      "SUPPORTED",
+      "UNSUPPORTED",
+      "INSUFFICIENT_EVIDENCE"
+    ]
+  },
+  {
+    "id": "review_finding-13",
+    "family": "review_finding",
+    "split": "final",
+    "state": "An independent test fails only after the cited change and passes with its correction.",
+    "gold": "SUPPORTED",
+    "question": "Classify whether the review finding is supported.",
+    "candidates": [
+      "SUPPORTED",
+      "UNSUPPORTED",
+      "INSUFFICIENT_EVIDENCE"
+    ]
+  },
+  {
+    "id": "review_finding-14",
+    "family": "review_finding",
+    "split": "final",
+    "state": "The finding is only a style preference with no correctness mechanism.",
+    "gold": "UNSUPPORTED",
+    "question": "Classify whether the review finding is supported.",
+    "candidates": [
+      "SUPPORTED",
+      "UNSUPPORTED",
+      "INSUFFICIENT_EVIDENCE"
+    ]
+  },
+  {
+    "id": "review_finding-15",
+    "family": "review_finding",
+    "split": "final",
+    "state": "The finding relies on a truncated diff and cannot identify the affected path.",
+    "gold": "INSUFFICIENT_EVIDENCE",
+    "question": "Classify whether the review finding is supported.",
+    "candidates": [
+      "SUPPORTED",
+      "UNSUPPORTED",
+      "INSUFFICIENT_EVIDENCE"
+    ]
+  },
+  {
+    "id": "completion_support-01",
+    "family": "completion_support",
+    "split": "development",
+    "state": "Required tests pass on the current hash and final visual state matches the oracle.",
+    "gold": "EVIDENCE_SUFFICIENT",
+    "question": "Classify completion support; this is advisory only.",
+    "candidates": [
+      "EVIDENCE_SUFFICIENT",
+      "EVIDENCE_INCOMPLETE",
+      "BLOCKED"
+    ]
+  },
+  {
+    "id": "completion_support-02",
+    "family": "completion_support",
+    "split": "development",
+    "state": "The implementation is edited but the required post-edit test has not run.",
+    "gold": "EVIDENCE_INCOMPLETE",
+    "question": "Classify completion support; this is advisory only.",
+    "candidates": [
+      "EVIDENCE_SUFFICIENT",
+      "EVIDENCE_INCOMPLETE",
+      "BLOCKED"
+    ]
+  },
+  {
+    "id": "completion_support-03",
+    "family": "completion_support",
+    "split": "development",
+    "state": "The permitted test command fails and cannot safely satisfy the contract.",
+    "gold": "BLOCKED",
+    "question": "Classify completion support; this is advisory only.",
+    "candidates": [
+      "EVIDENCE_SUFFICIENT",
+      "EVIDENCE_INCOMPLETE",
+      "BLOCKED"
+    ]
+  },
+  {
+    "id": "completion_support-04",
+    "family": "completion_support",
+    "split": "development",
+    "state": "All required criteria have current evidence and no unresolved operations remain.",
+    "gold": "EVIDENCE_SUFFICIENT",
+    "question": "Classify completion support; this is advisory only.",
+    "candidates": [
+      "EVIDENCE_SUFFICIENT",
+      "EVIDENCE_INCOMPLETE",
+      "BLOCKED"
+    ]
+  },
+  {
+    "id": "completion_support-05",
+    "family": "completion_support",
+    "split": "development",
+    "state": "A final message exists but the only test predates the latest edit.",
+    "gold": "EVIDENCE_INCOMPLETE",
+    "question": "Classify completion support; this is advisory only.",
+    "candidates": [
+      "EVIDENCE_SUFFICIENT",
+      "EVIDENCE_INCOMPLETE",
+      "BLOCKED"
+    ]
+  },
+  {
+    "id": "completion_support-06",
+    "family": "completion_support",
+    "split": "development",
+    "state": "A non-idempotent write has unknown outcome and repeating it is unsafe.",
+    "gold": "BLOCKED",
+    "question": "Classify completion support; this is advisory only.",
+    "candidates": [
+      "EVIDENCE_SUFFICIENT",
+      "EVIDENCE_INCOMPLETE",
+      "BLOCKED"
+    ]
+  },
+  {
+    "id": "completion_support-07",
+    "family": "completion_support",
+    "split": "development",
+    "state": "Final test, source hash, and independent state check agree.",
+    "gold": "EVIDENCE_SUFFICIENT",
+    "question": "Classify completion support; this is advisory only.",
+    "candidates": [
+      "EVIDENCE_SUFFICIENT",
+      "EVIDENCE_INCOMPLETE",
+      "BLOCKED"
+    ]
+  },
+  {
+    "id": "completion_support-08",
+    "family": "completion_support",
+    "split": "development",
+    "state": "OCR returned no findings but required behavioral tests were skipped.",
+    "gold": "EVIDENCE_INCOMPLETE",
+    "question": "Classify completion support; this is advisory only.",
+    "candidates": [
+      "EVIDENCE_SUFFICIENT",
+      "EVIDENCE_INCOMPLETE",
+      "BLOCKED"
+    ]
+  },
+  {
+    "id": "completion_support-09",
+    "family": "completion_support",
+    "split": "development",
+    "state": "The task requests files outside its permitted scope.",
+    "gold": "BLOCKED",
+    "question": "Classify completion support; this is advisory only.",
+    "candidates": [
+      "EVIDENCE_SUFFICIENT",
+      "EVIDENCE_INCOMPLETE",
+      "BLOCKED"
+    ]
+  },
+  {
+    "id": "completion_support-10",
+    "family": "completion_support",
+    "split": "development",
+    "state": "The bounded repair passed its frozen regression and cites the result.",
+    "gold": "EVIDENCE_SUFFICIENT",
+    "question": "Classify completion support; this is advisory only.",
+    "candidates": [
+      "EVIDENCE_SUFFICIENT",
+      "EVIDENCE_INCOMPLETE",
+      "BLOCKED"
+    ]
+  },
+  {
+    "id": "completion_support-11",
+    "family": "completion_support",
+    "split": "final",
+    "state": "The screenshot is stale relative to the current browser state.",
+    "gold": "EVIDENCE_INCOMPLETE",
+    "question": "Classify completion support; this is advisory only.",
+    "candidates": [
+      "EVIDENCE_SUFFICIENT",
+      "EVIDENCE_INCOMPLETE",
+      "BLOCKED"
+    ]
+  },
+  {
+    "id": "completion_support-12",
+    "family": "completion_support",
+    "split": "final",
+    "state": "The required fixture is unavailable and no substitute is authorized.",
+    "gold": "BLOCKED",
+    "question": "Classify completion support; this is advisory only.",
+    "candidates": [
+      "EVIDENCE_SUFFICIENT",
+      "EVIDENCE_INCOMPLETE",
+      "BLOCKED"
+    ]
+  },
+  {
+    "id": "completion_support-13",
+    "family": "completion_support",
+    "split": "final",
+    "state": "Every required check is current and tied to the final revision.",
+    "gold": "EVIDENCE_SUFFICIENT",
+    "question": "Classify completion support; this is advisory only.",
+    "candidates": [
+      "EVIDENCE_SUFFICIENT",
+      "EVIDENCE_INCOMPLETE",
+      "BLOCKED"
+    ]
+  },
+  {
+    "id": "completion_support-14",
+    "family": "completion_support",
+    "split": "final",
+    "state": "A tool call was announced but no result exists in the event log.",
+    "gold": "EVIDENCE_INCOMPLETE",
+    "question": "Classify completion support; this is advisory only.",
+    "candidates": [
+      "EVIDENCE_SUFFICIENT",
+      "EVIDENCE_INCOMPLETE",
+      "BLOCKED"
+    ]
+  },
+  {
+    "id": "completion_support-15",
+    "family": "completion_support",
+    "split": "final",
+    "state": "Evidence contradicts claimed success and authorized checks are exhausted.",
+    "gold": "BLOCKED",
+    "question": "Classify completion support; this is advisory only.",
+    "candidates": [
+      "EVIDENCE_SUFFICIENT",
+      "EVIDENCE_INCOMPLETE",
+      "BLOCKED"
+    ]
+  }
+]

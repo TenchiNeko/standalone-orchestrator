@@ -3,6 +3,7 @@ import unittest
 from pathlib import Path
 
 from orchestrator_v2.jev import JevAdapter
+from orchestrator_v2.decisions import MockDecisionProvider
 from orchestrator_v2.state import StateStore
 
 
@@ -20,6 +21,12 @@ class PolicyTests(unittest.TestCase):
             events = store.events("t")
             self.assertEqual(events[-1]["kind"], "mutation_result")
             self.assertIn('"unknown"', events[-1]["payload"])
+
+    def test_mock_decision_retains_distribution_without_authority(self):
+        batch = MockDecisionProvider("VERIFY").decide("state", {"next": {"type": "choice", "criteria": {"VERIFY": "check", "ESCALATE": "ask"}}})
+        self.assertEqual(batch.decisions[0].selected, "VERIFY")
+        self.assertEqual(batch.decisions[0].distribution["VERIFY"], 1.0)
+        self.assertEqual(batch.decisions[0].metadata["authority"], "none")
 
 
 if __name__ == "__main__": unittest.main()

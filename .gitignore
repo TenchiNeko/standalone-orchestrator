@@ -3,7 +3,9 @@
 __pycache__/
 venv/
 .venv/
+.nanojev-venv/
 .orchestrator-v2/
+vendor/NanoJev/
 *.pyc
 *.egg-info/
 

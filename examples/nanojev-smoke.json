@@ -1,0 +1,22 @@
+{
+  "states": [
+    {
+      "id": "smoke-1",
+      "state": "A test command returned exit code 1 and its output names an assertion failure.",
+      "questions": {
+        "source": {
+          "type": "choice",
+          "instructions": "Classify the primary source of this failure.",
+          "criteria": {
+            "CODE": "The implementation or source logic is wrong.",
+            "TEST": "The test expectation or test harness is wrong.",
+            "TOOL": "The tool invocation or tool result is wrong.",
+            "ENVIRONMENT": "The runtime environment is wrong.",
+            "REQUIREMENT": "The stated requirement is contradictory or wrong.",
+            "UNKNOWN": "The supplied evidence is insufficient to classify the source."
+          }
+        }
+      }
+    }
+  ]
+}
