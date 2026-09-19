@@ -41,7 +41,8 @@ class Controller:
             self._phase(task, Phase.REVIEW)
             try:
                 preview = self.ocr.preview(root); self.store.evidence(task.task_id, "ocr_preview", root, preview, task.contract.permitted_files)
-                files = [x.get("path") for x in preview.get("files", []) if isinstance(x, dict) and x.get("path")]
+                candidates = preview.get("reviewable_files", preview.get("files", []))
+                files = [x.get("path") for x in candidates if isinstance(x, dict) and x.get("path")]
                 if files: self.store.evidence(task.task_id, "ocr_rules", root, {"files": files, "rules": self.ocr.rules(root, files)}, files)
                 review_ok = True
             except Exception as exc:
