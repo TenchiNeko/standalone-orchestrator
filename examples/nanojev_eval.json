@@ -10,7 +10,12 @@
       "SUCCESS",
       "FAILURE",
       "UNCERTAIN"
-    ]
+    ],
+    "candidate_descriptions": {
+      "SUCCESS": "The requested operation is confirmed by an authoritative postcondition.",
+      "FAILURE": "The requested operation is confirmed not to have completed.",
+      "UNCERTAIN": "The operation outcome is unknown and must not be retried without reconciliation."
+    }
   },
   {
     "id": "operation_result-02",
@@ -23,7 +28,12 @@
       "SUCCESS",
       "FAILURE",
       "UNCERTAIN"
-    ]
+    ],
+    "candidate_descriptions": {
+      "SUCCESS": "The requested operation is confirmed by an authoritative postcondition.",
+      "FAILURE": "The requested operation is confirmed not to have completed.",
+      "UNCERTAIN": "The operation outcome is unknown and must not be retried without reconciliation."
+    }
   },
   {
     "id": "operation_result-03",
@@ -36,7 +46,12 @@
       "SUCCESS",
       "FAILURE",
       "UNCERTAIN"
-    ]
+    ],
+    "candidate_descriptions": {
+      "SUCCESS": "The requested operation is confirmed by an authoritative postcondition.",
+      "FAILURE": "The requested operation is confirmed not to have completed.",
+      "UNCERTAIN": "The operation outcome is unknown and must not be retried without reconciliation."
+    }
   },
   {
     "id": "operation_result-04",
@@ -49,7 +64,12 @@
       "SUCCESS",
       "FAILURE",
       "UNCERTAIN"
-    ]
+    ],
+    "candidate_descriptions": {
+      "SUCCESS": "The requested operation is confirmed by an authoritative postcondition.",
+      "FAILURE": "The requested operation is confirmed not to have completed.",
+      "UNCERTAIN": "The operation outcome is unknown and must not be retried without reconciliation."
+    }
   },
   {
     "id": "operation_result-05",
@@ -62,7 +82,12 @@
       "SUCCESS",
       "FAILURE",
       "UNCERTAIN"
-    ]
+    ],
+    "candidate_descriptions": {
+      "SUCCESS": "The requested operation is confirmed by an authoritative postcondition.",
+      "FAILURE": "The requested operation is confirmed not to have completed.",
+      "UNCERTAIN": "The operation outcome is unknown and must not be retried without reconciliation."
+    }
   },
   {
     "id": "operation_result-06",
@@ -75,7 +100,12 @@
       "SUCCESS",
       "FAILURE",
       "UNCERTAIN"
-    ]
+    ],
+    "candidate_descriptions": {
+      "SUCCESS": "The requested operation is confirmed by an authoritative postcondition.",
+      "FAILURE": "The requested operation is confirmed not to have completed.",
+      "UNCERTAIN": "The operation outcome is unknown and must not be retried without reconciliation."
+    }
   },
   {
     "id": "operation_result-07",
@@ -88,7 +118,12 @@
       "SUCCESS",
       "FAILURE",
       "UNCERTAIN"
-    ]
+    ],
+    "candidate_descriptions": {
+      "SUCCESS": "The requested operation is confirmed by an authoritative postcondition.",
+      "FAILURE": "The requested operation is confirmed not to have completed.",
+      "UNCERTAIN": "The operation outcome is unknown and must not be retried without reconciliation."
+    }
   },
   {
     "id": "operation_result-08",
@@ -101,7 +136,12 @@
       "SUCCESS",
       "FAILURE",
       "UNCERTAIN"
-    ]
+    ],
+    "candidate_descriptions": {
+      "SUCCESS": "The requested operation is confirmed by an authoritative postcondition.",
+      "FAILURE": "The requested operation is confirmed not to have completed.",
+      "UNCERTAIN": "The operation outcome is unknown and must not be retried without reconciliation."
+    }
   },
   {
     "id": "operation_result-09",
@@ -114,7 +154,12 @@
       "SUCCESS",
       "FAILURE",
       "UNCERTAIN"
-    ]
+    ],
+    "candidate_descriptions": {
+      "SUCCESS": "The requested operation is confirmed by an authoritative postcondition.",
+      "FAILURE": "The requested operation is confirmed not to have completed.",
+      "UNCERTAIN": "The operation outcome is unknown and must not be retried without reconciliation."
+    }
   },
   {
     "id": "operation_result-10",
@@ -127,7 +172,12 @@
       "SUCCESS",
       "FAILURE",
       "UNCERTAIN"
-    ]
+    ],
+    "candidate_descriptions": {
+      "SUCCESS": "The requested operation is confirmed by an authoritative postcondition.",
+      "FAILURE": "The requested operation is confirmed not to have completed.",
+      "UNCERTAIN": "The operation outcome is unknown and must not be retried without reconciliation."
+    }
   },
   {
     "id": "operation_result-11",
@@ -140,7 +190,12 @@
       "SUCCESS",
       "FAILURE",
       "UNCERTAIN"
-    ]
+    ],
+    "candidate_descriptions": {
+      "SUCCESS": "The requested operation is confirmed by an authoritative postcondition.",
+      "FAILURE": "The requested operation is confirmed not to have completed.",
+      "UNCERTAIN": "The operation outcome is unknown and must not be retried without reconciliation."
+    }
   },
   {
     "id": "operation_result-12",
@@ -153,7 +208,12 @@
       "SUCCESS",
       "FAILURE",
       "UNCERTAIN"
-    ]
+    ],
+    "candidate_descriptions": {
+      "SUCCESS": "The requested operation is confirmed by an authoritative postcondition.",
+      "FAILURE": "The requested operation is confirmed not to have completed.",
+      "UNCERTAIN": "The operation outcome is unknown and must not be retried without reconciliation."
+    }
   },
   {
     "id": "operation_result-13",
@@ -166,7 +226,12 @@
       "SUCCESS",
       "FAILURE",
       "UNCERTAIN"
-    ]
+    ],
+    "candidate_descriptions": {
+      "SUCCESS": "The requested operation is confirmed by an authoritative postcondition.",
+      "FAILURE": "The requested operation is confirmed not to have completed.",
+      "UNCERTAIN": "The operation outcome is unknown and must not be retried without reconciliation."
+    }
   },
   {
     "id": "operation_result-14",
@@ -179,7 +244,12 @@
       "SUCCESS",
       "FAILURE",
       "UNCERTAIN"
-    ]
+    ],
+    "candidate_descriptions": {
+      "SUCCESS": "The requested operation is confirmed by an authoritative postcondition.",
+      "FAILURE": "The requested operation is confirmed not to have completed.",
+      "UNCERTAIN": "The operation outcome is unknown and must not be retried without reconciliation."
+    }
   },
   {
     "id": "operation_result-15",
@@ -192,7 +262,12 @@
       "SUCCESS",
       "FAILURE",
       "UNCERTAIN"
-    ]
+    ],
+    "candidate_descriptions": {
+      "SUCCESS": "The requested operation is confirmed by an authoritative postcondition.",
+      "FAILURE": "The requested operation is confirmed not to have completed.",
+      "UNCERTAIN": "The operation outcome is unknown and must not be retried without reconciliation."
+    }
   },
   {
     "id": "progress_status-01",
@@ -206,7 +281,13 @@
       "STATE_CHANGED",
       "NO_NEW_EVIDENCE",
       "REPEATING"
-    ]
+    ],
+    "candidate_descriptions": {
+      "NEW_EVIDENCE": "A check produced materially new observed evidence.",
+      "STATE_CHANGED": "The relevant source, artifact, or external state changed.",
+      "NO_NEW_EVIDENCE": "The observed facts and relevant state are unchanged.",
+      "REPEATING": "The same investigation is being repeated without new evidence."
+    }
   },
   {
     "id": "progress_status-02",
@@ -220,7 +301,13 @@
       "STATE_CHANGED",
       "NO_NEW_EVIDENCE",
       "REPEATING"
-    ]
+    ],
+    "candidate_descriptions": {
+      "NEW_EVIDENCE": "A check produced materially new observed evidence.",
+      "STATE_CHANGED": "The relevant source, artifact, or external state changed.",
+      "NO_NEW_EVIDENCE": "The observed facts and relevant state are unchanged.",
+      "REPEATING": "The same investigation is being repeated without new evidence."
+    }
   },
   {
     "id": "progress_status-03",
@@ -234,7 +321,13 @@
       "STATE_CHANGED",
       "NO_NEW_EVIDENCE",
       "REPEATING"
-    ]
+    ],
+    "candidate_descriptions": {
+      "NEW_EVIDENCE": "A check produced materially new observed evidence.",
+      "STATE_CHANGED": "The relevant source, artifact, or external state changed.",
+      "NO_NEW_EVIDENCE": "The observed facts and relevant state are unchanged.",
+      "REPEATING": "The same investigation is being repeated without new evidence."
+    }
   },
   {
     "id": "progress_status-04",
@@ -248,7 +341,13 @@
       "STATE_CHANGED",
       "NO_NEW_EVIDENCE",
       "REPEATING"
-    ]
+    ],
+    "candidate_descriptions": {
+      "NEW_EVIDENCE": "A check produced materially new observed evidence.",
+      "STATE_CHANGED": "The relevant source, artifact, or external state changed.",
+      "NO_NEW_EVIDENCE": "The observed facts and relevant state are unchanged.",
+      "REPEATING": "The same investigation is being repeated without new evidence."
+    }
   },
   {
     "id": "progress_status-05",
@@ -262,7 +361,13 @@
       "STATE_CHANGED",
       "NO_NEW_EVIDENCE",
       "REPEATING"
-    ]
+    ],
+    "candidate_descriptions": {
+      "NEW_EVIDENCE": "A check produced materially new observed evidence.",
+      "STATE_CHANGED": "The relevant source, artifact, or external state changed.",
+      "NO_NEW_EVIDENCE": "The observed facts and relevant state are unchanged.",
+      "REPEATING": "The same investigation is being repeated without new evidence."
+    }
   },
   {
     "id": "progress_status-06",
@@ -276,7 +381,13 @@
       "STATE_CHANGED",
       "NO_NEW_EVIDENCE",
       "REPEATING"
-    ]
+    ],
+    "candidate_descriptions": {
+      "NEW_EVIDENCE": "A check produced materially new observed evidence.",
+      "STATE_CHANGED": "The relevant source, artifact, or external state changed.",
+      "NO_NEW_EVIDENCE": "The observed facts and relevant state are unchanged.",
+      "REPEATING": "The same investigation is being repeated without new evidence."
+    }
   },
   {
     "id": "progress_status-07",
@@ -290,7 +401,13 @@
       "STATE_CHANGED",
       "NO_NEW_EVIDENCE",
       "REPEATING"
-    ]
+    ],
+    "candidate_descriptions": {
+      "NEW_EVIDENCE": "A check produced materially new observed evidence.",
+      "STATE_CHANGED": "The relevant source, artifact, or external state changed.",
+      "NO_NEW_EVIDENCE": "The observed facts and relevant state are unchanged.",
+      "REPEATING": "The same investigation is being repeated without new evidence."
+    }
   },
   {
     "id": "progress_status-08",
@@ -304,7 +421,13 @@
       "STATE_CHANGED",
       "NO_NEW_EVIDENCE",
       "REPEATING"
-    ]
+    ],
+    "candidate_descriptions": {
+      "NEW_EVIDENCE": "A check produced materially new observed evidence.",
+      "STATE_CHANGED": "The relevant source, artifact, or external state changed.",
+      "NO_NEW_EVIDENCE": "The observed facts and relevant state are unchanged.",
+      "REPEATING": "The same investigation is being repeated without new evidence."
+    }
   },
   {
     "id": "progress_status-09",
@@ -318,7 +441,13 @@
       "STATE_CHANGED",
       "NO_NEW_EVIDENCE",
       "REPEATING"
-    ]
+    ],
+    "candidate_descriptions": {
+      "NEW_EVIDENCE": "A check produced materially new observed evidence.",
+      "STATE_CHANGED": "The relevant source, artifact, or external state changed.",
+      "NO_NEW_EVIDENCE": "The observed facts and relevant state are unchanged.",
+      "REPEATING": "The same investigation is being repeated without new evidence."
+    }
   },
   {
     "id": "progress_status-10",
@@ -332,7 +461,13 @@
       "STATE_CHANGED",
       "NO_NEW_EVIDENCE",
       "REPEATING"
-    ]
+    ],
+    "candidate_descriptions": {
+      "NEW_EVIDENCE": "A check produced materially new observed evidence.",
+      "STATE_CHANGED": "The relevant source, artifact, or external state changed.",
+      "NO_NEW_EVIDENCE": "The observed facts and relevant state are unchanged.",
+      "REPEATING": "The same investigation is being repeated without new evidence."
+    }
   },
   {
     "id": "progress_status-11",
@@ -346,7 +481,13 @@
       "STATE_CHANGED",
       "NO_NEW_EVIDENCE",
       "REPEATING"
-    ]
+    ],
+    "candidate_descriptions": {
+      "NEW_EVIDENCE": "A check produced materially new observed evidence.",
+      "STATE_CHANGED": "The relevant source, artifact, or external state changed.",
+      "NO_NEW_EVIDENCE": "The observed facts and relevant state are unchanged.",
+      "REPEATING": "The same investigation is being repeated without new evidence."
+    }
   },
   {
     "id": "progress_status-12",
@@ -360,7 +501,13 @@
       "STATE_CHANGED",
       "NO_NEW_EVIDENCE",
       "REPEATING"
-    ]
+    ],
+    "candidate_descriptions": {
+      "NEW_EVIDENCE": "A check produced materially new observed evidence.",
+      "STATE_CHANGED": "The relevant source, artifact, or external state changed.",
+      "NO_NEW_EVIDENCE": "The observed facts and relevant state are unchanged.",
+      "REPEATING": "The same investigation is being repeated without new evidence."
+    }
   },
   {
     "id": "progress_status-13",
@@ -374,7 +521,13 @@
       "STATE_CHANGED",
       "NO_NEW_EVIDENCE",
       "REPEATING"
-    ]
+    ],
+    "candidate_descriptions": {
+      "NEW_EVIDENCE": "A check produced materially new observed evidence.",
+      "STATE_CHANGED": "The relevant source, artifact, or external state changed.",
+      "NO_NEW_EVIDENCE": "The observed facts and relevant state are unchanged.",
+      "REPEATING": "The same investigation is being repeated without new evidence."
+    }
   },
   {
     "id": "progress_status-14",
@@ -388,7 +541,13 @@
       "STATE_CHANGED",
       "NO_NEW_EVIDENCE",
       "REPEATING"
-    ]
+    ],
+    "candidate_descriptions": {
+      "NEW_EVIDENCE": "A check produced materially new observed evidence.",
+      "STATE_CHANGED": "The relevant source, artifact, or external state changed.",
+      "NO_NEW_EVIDENCE": "The observed facts and relevant state are unchanged.",
+      "REPEATING": "The same investigation is being repeated without new evidence."
+    }
   },
   {
     "id": "progress_status-15",
@@ -402,7 +561,13 @@
       "STATE_CHANGED",
       "NO_NEW_EVIDENCE",
       "REPEATING"
-    ]
+    ],
+    "candidate_descriptions": {
+      "NEW_EVIDENCE": "A check produced materially new observed evidence.",
+      "STATE_CHANGED": "The relevant source, artifact, or external state changed.",
+      "NO_NEW_EVIDENCE": "The observed facts and relevant state are unchanged.",
+      "REPEATING": "The same investigation is being repeated without new evidence."
+    }
   },
   {
     "id": "failure_source-01",
@@ -418,7 +583,15 @@
       "ENVIRONMENT",
       "REQUIREMENT",
       "UNKNOWN"
-    ]
+    ],
+    "candidate_descriptions": {
+      "CODE": "The implementation or source logic causes the failure.",
+      "TEST": "The test or fixture is incorrect or stale.",
+      "TOOL": "The tool wrapper or invocation produced the failure.",
+      "ENVIRONMENT": "The runtime environment or service caused the failure.",
+      "REQUIREMENT": "The stated requirements are contradictory or impossible.",
+      "UNKNOWN": "The available evidence cannot identify the source."
+    }
   },
   {
     "id": "failure_source-02",
@@ -434,7 +607,15 @@
       "ENVIRONMENT",
       "REQUIREMENT",
       "UNKNOWN"
-    ]
+    ],
+    "candidate_descriptions": {
+      "CODE": "The implementation or source logic causes the failure.",
+      "TEST": "The test or fixture is incorrect or stale.",
+      "TOOL": "The tool wrapper or invocation produced the failure.",
+      "ENVIRONMENT": "The runtime environment or service caused the failure.",
+      "REQUIREMENT": "The stated requirements are contradictory or impossible.",
+      "UNKNOWN": "The available evidence cannot identify the source."
+    }
   },
   {
     "id": "failure_source-03",
@@ -450,7 +631,15 @@
       "ENVIRONMENT",
       "REQUIREMENT",
       "UNKNOWN"
-    ]
+    ],
+    "candidate_descriptions": {
+      "CODE": "The implementation or source logic causes the failure.",
+      "TEST": "The test or fixture is incorrect or stale.",
+      "TOOL": "The tool wrapper or invocation produced the failure.",
+      "ENVIRONMENT": "The runtime environment or service caused the failure.",
+      "REQUIREMENT": "The stated requirements are contradictory or impossible.",
+      "UNKNOWN": "The available evidence cannot identify the source."
+    }
   },
   {
     "id": "failure_source-04",
@@ -466,7 +655,15 @@
       "ENVIRONMENT",
       "REQUIREMENT",
       "UNKNOWN"
-    ]
+    ],
+    "candidate_descriptions": {
+      "CODE": "The implementation or source logic causes the failure.",
+      "TEST": "The test or fixture is incorrect or stale.",
+      "TOOL": "The tool wrapper or invocation produced the failure.",
+      "ENVIRONMENT": "The runtime environment or service caused the failure.",
+      "REQUIREMENT": "The stated requirements are contradictory or impossible.",
+      "UNKNOWN": "The available evidence cannot identify the source."
+    }
   },
   {
     "id": "failure_source-05",
@@ -482,7 +679,15 @@
       "ENVIRONMENT",
       "REQUIREMENT",
       "UNKNOWN"
-    ]
+    ],
+    "candidate_descriptions": {
+      "CODE": "The implementation or source logic causes the failure.",
+      "TEST": "The test or fixture is incorrect or stale.",
+      "TOOL": "The tool wrapper or invocation produced the failure.",
+      "ENVIRONMENT": "The runtime environment or service caused the failure.",
+      "REQUIREMENT": "The stated requirements are contradictory or impossible.",
+      "UNKNOWN": "The available evidence cannot identify the source."
+    }
   },
   {
     "id": "failure_source-06",
@@ -498,7 +703,15 @@
       "ENVIRONMENT",
       "REQUIREMENT",
       "UNKNOWN"
-    ]
+    ],
+    "candidate_descriptions": {
+      "CODE": "The implementation or source logic causes the failure.",
+      "TEST": "The test or fixture is incorrect or stale.",
+      "TOOL": "The tool wrapper or invocation produced the failure.",
+      "ENVIRONMENT": "The runtime environment or service caused the failure.",
+      "REQUIREMENT": "The stated requirements are contradictory or impossible.",
+      "UNKNOWN": "The available evidence cannot identify the source."
+    }
   },
   {
     "id": "failure_source-07",
@@ -514,7 +727,15 @@
       "ENVIRONMENT",
       "REQUIREMENT",
       "UNKNOWN"
-    ]
+    ],
+    "candidate_descriptions": {
+      "CODE": "The implementation or source logic causes the failure.",
+      "TEST": "The test or fixture is incorrect or stale.",
+      "TOOL": "The tool wrapper or invocation produced the failure.",
+      "ENVIRONMENT": "The runtime environment or service caused the failure.",
+      "REQUIREMENT": "The stated requirements are contradictory or impossible.",
+      "UNKNOWN": "The available evidence cannot identify the source."
+    }
   },
   {
     "id": "failure_source-08",
@@ -530,7 +751,15 @@
       "ENVIRONMENT",
       "REQUIREMENT",
       "UNKNOWN"
-    ]
+    ],
+    "candidate_descriptions": {
+      "CODE": "The implementation or source logic causes the failure.",
+      "TEST": "The test or fixture is incorrect or stale.",
+      "TOOL": "The tool wrapper or invocation produced the failure.",
+      "ENVIRONMENT": "The runtime environment or service caused the failure.",
+      "REQUIREMENT": "The stated requirements are contradictory or impossible.",
+      "UNKNOWN": "The available evidence cannot identify the source."
+    }
   },
   {
     "id": "failure_source-09",
@@ -546,7 +775,15 @@
       "ENVIRONMENT",
       "REQUIREMENT",
       "UNKNOWN"
-    ]
+    ],
+    "candidate_descriptions": {
+      "CODE": "The implementation or source logic causes the failure.",
+      "TEST": "The test or fixture is incorrect or stale.",
+      "TOOL": "The tool wrapper or invocation produced the failure.",
+      "ENVIRONMENT": "The runtime environment or service caused the failure.",
+      "REQUIREMENT": "The stated requirements are contradictory or impossible.",
+      "UNKNOWN": "The available evidence cannot identify the source."
+    }
   },
   {
     "id": "failure_source-10",
@@ -562,7 +799,15 @@
       "ENVIRONMENT",
       "REQUIREMENT",
       "UNKNOWN"
-    ]
+    ],
+    "candidate_descriptions": {
+      "CODE": "The implementation or source logic causes the failure.",
+      "TEST": "The test or fixture is incorrect or stale.",
+      "TOOL": "The tool wrapper or invocation produced the failure.",
+      "ENVIRONMENT": "The runtime environment or service caused the failure.",
+      "REQUIREMENT": "The stated requirements are contradictory or impossible.",
+      "UNKNOWN": "The available evidence cannot identify the source."
+    }
   },
   {
     "id": "failure_source-11",
@@ -578,7 +823,15 @@
       "ENVIRONMENT",
       "REQUIREMENT",
       "UNKNOWN"
-    ]
+    ],
+    "candidate_descriptions": {
+      "CODE": "The implementation or source logic causes the failure.",
+      "TEST": "The test or fixture is incorrect or stale.",
+      "TOOL": "The tool wrapper or invocation produced the failure.",
+      "ENVIRONMENT": "The runtime environment or service caused the failure.",
+      "REQUIREMENT": "The stated requirements are contradictory or impossible.",
+      "UNKNOWN": "The available evidence cannot identify the source."
+    }
   },
   {
     "id": "failure_source-12",
@@ -594,7 +847,15 @@
       "ENVIRONMENT",
       "REQUIREMENT",
       "UNKNOWN"
-    ]
+    ],
+    "candidate_descriptions": {
+      "CODE": "The implementation or source logic causes the failure.",
+      "TEST": "The test or fixture is incorrect or stale.",
+      "TOOL": "The tool wrapper or invocation produced the failure.",
+      "ENVIRONMENT": "The runtime environment or service caused the failure.",
+      "REQUIREMENT": "The stated requirements are contradictory or impossible.",
+      "UNKNOWN": "The available evidence cannot identify the source."
+    }
   },
   {
     "id": "failure_source-13",
@@ -610,7 +871,15 @@
       "ENVIRONMENT",
       "REQUIREMENT",
       "UNKNOWN"
-    ]
+    ],
+    "candidate_descriptions": {
+      "CODE": "The implementation or source logic causes the failure.",
+      "TEST": "The test or fixture is incorrect or stale.",
+      "TOOL": "The tool wrapper or invocation produced the failure.",
+      "ENVIRONMENT": "The runtime environment or service caused the failure.",
+      "REQUIREMENT": "The stated requirements are contradictory or impossible.",
+      "UNKNOWN": "The available evidence cannot identify the source."
+    }
   },
   {
     "id": "failure_source-14",
@@ -626,7 +895,15 @@
       "ENVIRONMENT",
       "REQUIREMENT",
       "UNKNOWN"
-    ]
+    ],
+    "candidate_descriptions": {
+      "CODE": "The implementation or source logic causes the failure.",
+      "TEST": "The test or fixture is incorrect or stale.",
+      "TOOL": "The tool wrapper or invocation produced the failure.",
+      "ENVIRONMENT": "The runtime environment or service caused the failure.",
+      "REQUIREMENT": "The stated requirements are contradictory or impossible.",
+      "UNKNOWN": "The available evidence cannot identify the source."
+    }
   },
   {
     "id": "failure_source-15",
@@ -642,7 +919,15 @@
       "ENVIRONMENT",
       "REQUIREMENT",
       "UNKNOWN"
-    ]
+    ],
+    "candidate_descriptions": {
+      "CODE": "The implementation or source logic causes the failure.",
+      "TEST": "The test or fixture is incorrect or stale.",
+      "TOOL": "The tool wrapper or invocation produced the failure.",
+      "ENVIRONMENT": "The runtime environment or service caused the failure.",
+      "REQUIREMENT": "The stated requirements are contradictory or impossible.",
+      "UNKNOWN": "The available evidence cannot identify the source."
+    }
   },
   {
     "id": "hypothesis_status-01",
@@ -656,7 +941,13 @@
       "ALREADY_TESTED",
       "REJECTED",
       "INSUFFICIENT_EVIDENCE"
-    ]
+    ],
+    "candidate_descriptions": {
+      "NEW": "This hypothesis has not yet been investigated.",
+      "ALREADY_TESTED": "This hypothesis was already tested with the current evidence.",
+      "REJECTED": "A controlled check disproved this hypothesis.",
+      "INSUFFICIENT_EVIDENCE": "The evidence is insufficient to classify this hypothesis."
+    }
   },
   {
     "id": "hypothesis_status-02",
@@ -670,7 +961,13 @@
       "ALREADY_TESTED",
       "REJECTED",
       "INSUFFICIENT_EVIDENCE"
-    ]
+    ],
+    "candidate_descriptions": {
+      "NEW": "This hypothesis has not yet been investigated.",
+      "ALREADY_TESTED": "This hypothesis was already tested with the current evidence.",
+      "REJECTED": "A controlled check disproved this hypothesis.",
+      "INSUFFICIENT_EVIDENCE": "The evidence is insufficient to classify this hypothesis."
+    }
   },
   {
     "id": "hypothesis_status-03",
@@ -684,7 +981,13 @@
       "ALREADY_TESTED",
       "REJECTED",
       "INSUFFICIENT_EVIDENCE"
-    ]
+    ],
+    "candidate_descriptions": {
+      "NEW": "This hypothesis has not yet been investigated.",
+      "ALREADY_TESTED": "This hypothesis was already tested with the current evidence.",
+      "REJECTED": "A controlled check disproved this hypothesis.",
+      "INSUFFICIENT_EVIDENCE": "The evidence is insufficient to classify this hypothesis."
+    }
   },
   {
     "id": "hypothesis_status-04",
@@ -698,7 +1001,13 @@
       "ALREADY_TESTED",
       "REJECTED",
       "INSUFFICIENT_EVIDENCE"
-    ]
+    ],
+    "candidate_descriptions": {
+      "NEW": "This hypothesis has not yet been investigated.",
+      "ALREADY_TESTED": "This hypothesis was already tested with the current evidence.",
+      "REJECTED": "A controlled check disproved this hypothesis.",
+      "INSUFFICIENT_EVIDENCE": "The evidence is insufficient to classify this hypothesis."
+    }
   },
   {
     "id": "hypothesis_status-05",
@@ -712,7 +1021,13 @@
       "ALREADY_TESTED",
       "REJECTED",
       "INSUFFICIENT_EVIDENCE"
-    ]
+    ],
+    "candidate_descriptions": {
+      "NEW": "This hypothesis has not yet been investigated.",
+      "ALREADY_TESTED": "This hypothesis was already tested with the current evidence.",
+      "REJECTED": "A controlled check disproved this hypothesis.",
+      "INSUFFICIENT_EVIDENCE": "The evidence is insufficient to classify this hypothesis."
+    }
   },
   {
     "id": "hypothesis_status-06",
@@ -726,7 +1041,13 @@
       "ALREADY_TESTED",
       "REJECTED",
       "INSUFFICIENT_EVIDENCE"
-    ]
+    ],
+    "candidate_descriptions": {
+      "NEW": "This hypothesis has not yet been investigated.",
+      "ALREADY_TESTED": "This hypothesis was already tested with the current evidence.",
+      "REJECTED": "A controlled check disproved this hypothesis.",
+      "INSUFFICIENT_EVIDENCE": "The evidence is insufficient to classify this hypothesis."
+    }
   },
   {
     "id": "hypothesis_status-07",
@@ -740,7 +1061,13 @@
       "ALREADY_TESTED",
       "REJECTED",
       "INSUFFICIENT_EVIDENCE"
-    ]
+    ],
+    "candidate_descriptions": {
+      "NEW": "This hypothesis has not yet been investigated.",
+      "ALREADY_TESTED": "This hypothesis was already tested with the current evidence.",
+      "REJECTED": "A controlled check disproved this hypothesis.",
+      "INSUFFICIENT_EVIDENCE": "The evidence is insufficient to classify this hypothesis."
+    }
   },
   {
     "id": "hypothesis_status-08",
@@ -754,7 +1081,13 @@
       "ALREADY_TESTED",
       "REJECTED",
       "INSUFFICIENT_EVIDENCE"
-    ]
+    ],
+    "candidate_descriptions": {
+      "NEW": "This hypothesis has not yet been investigated.",
+      "ALREADY_TESTED": "This hypothesis was already tested with the current evidence.",
+      "REJECTED": "A controlled check disproved this hypothesis.",
+      "INSUFFICIENT_EVIDENCE": "The evidence is insufficient to classify this hypothesis."
+    }
   },
   {
     "id": "hypothesis_status-09",
@@ -768,7 +1101,13 @@
       "ALREADY_TESTED",
       "REJECTED",
       "INSUFFICIENT_EVIDENCE"
-    ]
+    ],
+    "candidate_descriptions": {
+      "NEW": "This hypothesis has not yet been investigated.",
+      "ALREADY_TESTED": "This hypothesis was already tested with the current evidence.",
+      "REJECTED": "A controlled check disproved this hypothesis.",
+      "INSUFFICIENT_EVIDENCE": "The evidence is insufficient to classify this hypothesis."
+    }
   },
   {
     "id": "hypothesis_status-10",
@@ -782,7 +1121,13 @@
       "ALREADY_TESTED",
       "REJECTED",
       "INSUFFICIENT_EVIDENCE"
-    ]
+    ],
+    "candidate_descriptions": {
+      "NEW": "This hypothesis has not yet been investigated.",
+      "ALREADY_TESTED": "This hypothesis was already tested with the current evidence.",
+      "REJECTED": "A controlled check disproved this hypothesis.",
+      "INSUFFICIENT_EVIDENCE": "The evidence is insufficient to classify this hypothesis."
+    }
   },
   {
     "id": "hypothesis_status-11",
@@ -796,7 +1141,13 @@
       "ALREADY_TESTED",
       "REJECTED",
       "INSUFFICIENT_EVIDENCE"
-    ]
+    ],
+    "candidate_descriptions": {
+      "NEW": "This hypothesis has not yet been investigated.",
+      "ALREADY_TESTED": "This hypothesis was already tested with the current evidence.",
+      "REJECTED": "A controlled check disproved this hypothesis.",
+      "INSUFFICIENT_EVIDENCE": "The evidence is insufficient to classify this hypothesis."
+    }
   },
   {
     "id": "hypothesis_status-12",
@@ -810,7 +1161,13 @@
       "ALREADY_TESTED",
       "REJECTED",
       "INSUFFICIENT_EVIDENCE"
-    ]
+    ],
+    "candidate_descriptions": {
+      "NEW": "This hypothesis has not yet been investigated.",
+      "ALREADY_TESTED": "This hypothesis was already tested with the current evidence.",
+      "REJECTED": "A controlled check disproved this hypothesis.",
+      "INSUFFICIENT_EVIDENCE": "The evidence is insufficient to classify this hypothesis."
+    }
   },
   {
     "id": "hypothesis_status-13",
@@ -824,7 +1181,13 @@
       "ALREADY_TESTED",
       "REJECTED",
       "INSUFFICIENT_EVIDENCE"
-    ]
+    ],
+    "candidate_descriptions": {
+      "NEW": "This hypothesis has not yet been investigated.",
+      "ALREADY_TESTED": "This hypothesis was already tested with the current evidence.",
+      "REJECTED": "A controlled check disproved this hypothesis.",
+      "INSUFFICIENT_EVIDENCE": "The evidence is insufficient to classify this hypothesis."
+    }
   },
   {
     "id": "hypothesis_status-14",
@@ -838,7 +1201,13 @@
       "ALREADY_TESTED",
       "REJECTED",
       "INSUFFICIENT_EVIDENCE"
-    ]
+    ],
+    "candidate_descriptions": {
+      "NEW": "This hypothesis has not yet been investigated.",
+      "ALREADY_TESTED": "This hypothesis was already tested with the current evidence.",
+      "REJECTED": "A controlled check disproved this hypothesis.",
+      "INSUFFICIENT_EVIDENCE": "The evidence is insufficient to classify this hypothesis."
+    }
   },
   {
     "id": "hypothesis_status-15",
@@ -852,7 +1221,13 @@
       "ALREADY_TESTED",
       "REJECTED",
       "INSUFFICIENT_EVIDENCE"
-    ]
+    ],
+    "candidate_descriptions": {
+      "NEW": "This hypothesis has not yet been investigated.",
+      "ALREADY_TESTED": "This hypothesis was already tested with the current evidence.",
+      "REJECTED": "A controlled check disproved this hypothesis.",
+      "INSUFFICIENT_EVIDENCE": "The evidence is insufficient to classify this hypothesis."
+    }
   },
   {
     "id": "next_investigation-01",
@@ -866,7 +1241,13 @@
       "DIAGNOSE",
       "REVIEW",
       "ESCALATE"
-    ]
+    ],
+    "candidate_descriptions": {
+      "VERIFY": "Perform a concrete read-only check of a missing current fact.",
+      "DIAGNOSE": "Separate plausible failure causes with a targeted read-only check.",
+      "REVIEW": "Inspect a bounded change or finding against supplied evidence.",
+      "ESCALATE": "Stop and request review because safe evidence is insufficient."
+    }
   },
   {
     "id": "next_investigation-02",
@@ -880,7 +1261,13 @@
       "DIAGNOSE",
       "REVIEW",
       "ESCALATE"
-    ]
+    ],
+    "candidate_descriptions": {
+      "VERIFY": "Perform a concrete read-only check of a missing current fact.",
+      "DIAGNOSE": "Separate plausible failure causes with a targeted read-only check.",
+      "REVIEW": "Inspect a bounded change or finding against supplied evidence.",
+      "ESCALATE": "Stop and request review because safe evidence is insufficient."
+    }
   },
   {
     "id": "next_investigation-03",
@@ -894,7 +1281,13 @@
       "DIAGNOSE",
       "REVIEW",
       "ESCALATE"
-    ]
+    ],
+    "candidate_descriptions": {
+      "VERIFY": "Perform a concrete read-only check of a missing current fact.",
+      "DIAGNOSE": "Separate plausible failure causes with a targeted read-only check.",
+      "REVIEW": "Inspect a bounded change or finding against supplied evidence.",
+      "ESCALATE": "Stop and request review because safe evidence is insufficient."
+    }
   },
   {
     "id": "next_investigation-04",
@@ -908,7 +1301,13 @@
       "DIAGNOSE",
       "REVIEW",
       "ESCALATE"
-    ]
+    ],
+    "candidate_descriptions": {
+      "VERIFY": "Perform a concrete read-only check of a missing current fact.",
+      "DIAGNOSE": "Separate plausible failure causes with a targeted read-only check.",
+      "REVIEW": "Inspect a bounded change or finding against supplied evidence.",
+      "ESCALATE": "Stop and request review because safe evidence is insufficient."
+    }
   },
   {
     "id": "next_investigation-05",
@@ -922,7 +1321,13 @@
       "DIAGNOSE",
       "REVIEW",
       "ESCALATE"
-    ]
+    ],
+    "candidate_descriptions": {
+      "VERIFY": "Perform a concrete read-only check of a missing current fact.",
+      "DIAGNOSE": "Separate plausible failure causes with a targeted read-only check.",
+      "REVIEW": "Inspect a bounded change or finding against supplied evidence.",
+      "ESCALATE": "Stop and request review because safe evidence is insufficient."
+    }
   },
   {
     "id": "next_investigation-06",
@@ -936,7 +1341,13 @@
       "DIAGNOSE",
       "REVIEW",
       "ESCALATE"
-    ]
+    ],
+    "candidate_descriptions": {
+      "VERIFY": "Perform a concrete read-only check of a missing current fact.",
+      "DIAGNOSE": "Separate plausible failure causes with a targeted read-only check.",
+      "REVIEW": "Inspect a bounded change or finding against supplied evidence.",
+      "ESCALATE": "Stop and request review because safe evidence is insufficient."
+    }
   },
   {
     "id": "next_investigation-07",
@@ -950,7 +1361,13 @@
       "DIAGNOSE",
       "REVIEW",
       "ESCALATE"
-    ]
+    ],
+    "candidate_descriptions": {
+      "VERIFY": "Perform a concrete read-only check of a missing current fact.",
+      "DIAGNOSE": "Separate plausible failure causes with a targeted read-only check.",
+      "REVIEW": "Inspect a bounded change or finding against supplied evidence.",
+      "ESCALATE": "Stop and request review because safe evidence is insufficient."
+    }
   },
   {
     "id": "next_investigation-08",
@@ -964,7 +1381,13 @@
       "DIAGNOSE",
       "REVIEW",
       "ESCALATE"
-    ]
+    ],
+    "candidate_descriptions": {
+      "VERIFY": "Perform a concrete read-only check of a missing current fact.",
+      "DIAGNOSE": "Separate plausible failure causes with a targeted read-only check.",
+      "REVIEW": "Inspect a bounded change or finding against supplied evidence.",
+      "ESCALATE": "Stop and request review because safe evidence is insufficient."
+    }
   },
   {
     "id": "next_investigation-09",
@@ -978,7 +1401,13 @@
       "DIAGNOSE",
       "REVIEW",
       "ESCALATE"
-    ]
+    ],
+    "candidate_descriptions": {
+      "VERIFY": "Perform a concrete read-only check of a missing current fact.",
+      "DIAGNOSE": "Separate plausible failure causes with a targeted read-only check.",
+      "REVIEW": "Inspect a bounded change or finding against supplied evidence.",
+      "ESCALATE": "Stop and request review because safe evidence is insufficient."
+    }
   },
   {
     "id": "next_investigation-10",
@@ -992,7 +1421,13 @@
       "DIAGNOSE",
       "REVIEW",
       "ESCALATE"
-    ]
+    ],
+    "candidate_descriptions": {
+      "VERIFY": "Perform a concrete read-only check of a missing current fact.",
+      "DIAGNOSE": "Separate plausible failure causes with a targeted read-only check.",
+      "REVIEW": "Inspect a bounded change or finding against supplied evidence.",
+      "ESCALATE": "Stop and request review because safe evidence is insufficient."
+    }
   },
   {
     "id": "next_investigation-11",
@@ -1006,7 +1441,13 @@
       "DIAGNOSE",
       "REVIEW",
       "ESCALATE"
-    ]
+    ],
+    "candidate_descriptions": {
+      "VERIFY": "Perform a concrete read-only check of a missing current fact.",
+      "DIAGNOSE": "Separate plausible failure causes with a targeted read-only check.",
+      "REVIEW": "Inspect a bounded change or finding against supplied evidence.",
+      "ESCALATE": "Stop and request review because safe evidence is insufficient."
+    }
   },
   {
     "id": "next_investigation-12",
@@ -1020,7 +1461,13 @@
       "DIAGNOSE",
       "REVIEW",
       "ESCALATE"
-    ]
+    ],
+    "candidate_descriptions": {
+      "VERIFY": "Perform a concrete read-only check of a missing current fact.",
+      "DIAGNOSE": "Separate plausible failure causes with a targeted read-only check.",
+      "REVIEW": "Inspect a bounded change or finding against supplied evidence.",
+      "ESCALATE": "Stop and request review because safe evidence is insufficient."
+    }
   },
   {
     "id": "next_investigation-13",
@@ -1034,7 +1481,13 @@
       "DIAGNOSE",
       "REVIEW",
       "ESCALATE"
-    ]
+    ],
+    "candidate_descriptions": {
+      "VERIFY": "Perform a concrete read-only check of a missing current fact.",
+      "DIAGNOSE": "Separate plausible failure causes with a targeted read-only check.",
+      "REVIEW": "Inspect a bounded change or finding against supplied evidence.",
+      "ESCALATE": "Stop and request review because safe evidence is insufficient."
+    }
   },
   {
     "id": "next_investigation-14",
@@ -1048,7 +1501,13 @@
       "DIAGNOSE",
       "REVIEW",
       "ESCALATE"
-    ]
+    ],
+    "candidate_descriptions": {
+      "VERIFY": "Perform a concrete read-only check of a missing current fact.",
+      "DIAGNOSE": "Separate plausible failure causes with a targeted read-only check.",
+      "REVIEW": "Inspect a bounded change or finding against supplied evidence.",
+      "ESCALATE": "Stop and request review because safe evidence is insufficient."
+    }
   },
   {
     "id": "next_investigation-15",
@@ -1062,7 +1521,13 @@
       "DIAGNOSE",
       "REVIEW",
       "ESCALATE"
-    ]
+    ],
+    "candidate_descriptions": {
+      "VERIFY": "Perform a concrete read-only check of a missing current fact.",
+      "DIAGNOSE": "Separate plausible failure causes with a targeted read-only check.",
+      "REVIEW": "Inspect a bounded change or finding against supplied evidence.",
+      "ESCALATE": "Stop and request review because safe evidence is insufficient."
+    }
   },
   {
     "id": "review_finding-01",
@@ -1075,7 +1540,12 @@
       "SUPPORTED",
       "UNSUPPORTED",
       "INSUFFICIENT_EVIDENCE"
-    ]
+    ],
+    "candidate_descriptions": {
+      "SUPPORTED": "The finding is supported by a current reproduction or direct evidence.",
+      "UNSUPPORTED": "Current evidence contradicts the finding or its cited location.",
+      "INSUFFICIENT_EVIDENCE": "The finding may be plausible but lacks enough evidence."
+    }
   },
   {
     "id": "review_finding-02",
@@ -1088,7 +1558,12 @@
       "SUPPORTED",
       "UNSUPPORTED",
       "INSUFFICIENT_EVIDENCE"
-    ]
+    ],
+    "candidate_descriptions": {
+      "SUPPORTED": "The finding is supported by a current reproduction or direct evidence.",
+      "UNSUPPORTED": "Current evidence contradicts the finding or its cited location.",
+      "INSUFFICIENT_EVIDENCE": "The finding may be plausible but lacks enough evidence."
+    }
   },
   {
     "id": "review_finding-03",
@@ -1101,7 +1576,12 @@
       "SUPPORTED",
       "UNSUPPORTED",
       "INSUFFICIENT_EVIDENCE"
-    ]
+    ],
+    "candidate_descriptions": {
+      "SUPPORTED": "The finding is supported by a current reproduction or direct evidence.",
+      "UNSUPPORTED": "Current evidence contradicts the finding or its cited location.",
+      "INSUFFICIENT_EVIDENCE": "The finding may be plausible but lacks enough evidence."
+    }
   },
   {
     "id": "review_finding-04",
@@ -1114,7 +1594,12 @@
       "SUPPORTED",
       "UNSUPPORTED",
       "INSUFFICIENT_EVIDENCE"
-    ]
+    ],
+    "candidate_descriptions": {
+      "SUPPORTED": "The finding is supported by a current reproduction or direct evidence.",
+      "UNSUPPORTED": "Current evidence contradicts the finding or its cited location.",
+      "INSUFFICIENT_EVIDENCE": "The finding may be plausible but lacks enough evidence."
+    }
   },
   {
     "id": "review_finding-05",
@@ -1127,7 +1612,12 @@
       "SUPPORTED",
       "UNSUPPORTED",
       "INSUFFICIENT_EVIDENCE"
-    ]
+    ],
+    "candidate_descriptions": {
+      "SUPPORTED": "The finding is supported by a current reproduction or direct evidence.",
+      "UNSUPPORTED": "Current evidence contradicts the finding or its cited location.",
+      "INSUFFICIENT_EVIDENCE": "The finding may be plausible but lacks enough evidence."
+    }
   },
   {
     "id": "review_finding-06",
@@ -1140,7 +1630,12 @@
       "SUPPORTED",
       "UNSUPPORTED",
       "INSUFFICIENT_EVIDENCE"
-    ]
+    ],
+    "candidate_descriptions": {
+      "SUPPORTED": "The finding is supported by a current reproduction or direct evidence.",
+      "UNSUPPORTED": "Current evidence contradicts the finding or its cited location.",
+      "INSUFFICIENT_EVIDENCE": "The finding may be plausible but lacks enough evidence."
+    }
   },
   {
     "id": "review_finding-07",
@@ -1153,7 +1648,12 @@
       "SUPPORTED",
       "UNSUPPORTED",
       "INSUFFICIENT_EVIDENCE"
-    ]
+    ],
+    "candidate_descriptions": {
+      "SUPPORTED": "The finding is supported by a current reproduction or direct evidence.",
+      "UNSUPPORTED": "Current evidence contradicts the finding or its cited location.",
+      "INSUFFICIENT_EVIDENCE": "The finding may be plausible but lacks enough evidence."
+    }
   },
   {
     "id": "review_finding-08",
@@ -1166,7 +1666,12 @@
       "SUPPORTED",
       "UNSUPPORTED",
       "INSUFFICIENT_EVIDENCE"
-    ]
+    ],
+    "candidate_descriptions": {
+      "SUPPORTED": "The finding is supported by a current reproduction or direct evidence.",
+      "UNSUPPORTED": "Current evidence contradicts the finding or its cited location.",
+      "INSUFFICIENT_EVIDENCE": "The finding may be plausible but lacks enough evidence."
+    }
   },
   {
     "id": "review_finding-09",
@@ -1179,7 +1684,12 @@
       "SUPPORTED",
       "UNSUPPORTED",
       "INSUFFICIENT_EVIDENCE"
-    ]
+    ],
+    "candidate_descriptions": {
+      "SUPPORTED": "The finding is supported by a current reproduction or direct evidence.",
+      "UNSUPPORTED": "Current evidence contradicts the finding or its cited location.",
+      "INSUFFICIENT_EVIDENCE": "The finding may be plausible but lacks enough evidence."
+    }
   },
   {
     "id": "review_finding-10",
@@ -1192,7 +1702,12 @@
       "SUPPORTED",
       "UNSUPPORTED",
       "INSUFFICIENT_EVIDENCE"
-    ]
+    ],
+    "candidate_descriptions": {
+      "SUPPORTED": "The finding is supported by a current reproduction or direct evidence.",
+      "UNSUPPORTED": "Current evidence contradicts the finding or its cited location.",
+      "INSUFFICIENT_EVIDENCE": "The finding may be plausible but lacks enough evidence."
+    }
   },
   {
     "id": "review_finding-11",
@@ -1205,7 +1720,12 @@
       "SUPPORTED",
       "UNSUPPORTED",
       "INSUFFICIENT_EVIDENCE"
-    ]
+    ],
+    "candidate_descriptions": {
+      "SUPPORTED": "The finding is supported by a current reproduction or direct evidence.",
+      "UNSUPPORTED": "Current evidence contradicts the finding or its cited location.",
+      "INSUFFICIENT_EVIDENCE": "The finding may be plausible but lacks enough evidence."
+    }
   },
   {
     "id": "review_finding-12",
@@ -1218,7 +1738,12 @@
       "SUPPORTED",
       "UNSUPPORTED",
       "INSUFFICIENT_EVIDENCE"
-    ]
+    ],
+    "candidate_descriptions": {
+      "SUPPORTED": "The finding is supported by a current reproduction or direct evidence.",
+      "UNSUPPORTED": "Current evidence contradicts the finding or its cited location.",
+      "INSUFFICIENT_EVIDENCE": "The finding may be plausible but lacks enough evidence."
+    }
   },
   {
     "id": "review_finding-13",
@@ -1231,7 +1756,12 @@
       "SUPPORTED",
       "UNSUPPORTED",
       "INSUFFICIENT_EVIDENCE"
-    ]
+    ],
+    "candidate_descriptions": {
+      "SUPPORTED": "The finding is supported by a current reproduction or direct evidence.",
+      "UNSUPPORTED": "Current evidence contradicts the finding or its cited location.",
+      "INSUFFICIENT_EVIDENCE": "The finding may be plausible but lacks enough evidence."
+    }
   },
   {
     "id": "review_finding-14",
@@ -1244,7 +1774,12 @@
       "SUPPORTED",
       "UNSUPPORTED",
       "INSUFFICIENT_EVIDENCE"
-    ]
+    ],
+    "candidate_descriptions": {
+      "SUPPORTED": "The finding is supported by a current reproduction or direct evidence.",
+      "UNSUPPORTED": "Current evidence contradicts the finding or its cited location.",
+      "INSUFFICIENT_EVIDENCE": "The finding may be plausible but lacks enough evidence."
+    }
   },
   {
     "id": "review_finding-15",
@@ -1257,7 +1792,12 @@
       "SUPPORTED",
       "UNSUPPORTED",
       "INSUFFICIENT_EVIDENCE"
-    ]
+    ],
+    "candidate_descriptions": {
+      "SUPPORTED": "The finding is supported by a current reproduction or direct evidence.",
+      "UNSUPPORTED": "Current evidence contradicts the finding or its cited location.",
+      "INSUFFICIENT_EVIDENCE": "The finding may be plausible but lacks enough evidence."
+    }
   },
   {
     "id": "completion_support-01",
@@ -1270,7 +1810,12 @@
       "EVIDENCE_SUFFICIENT",
       "EVIDENCE_INCOMPLETE",
       "BLOCKED"
-    ]
+    ],
+    "candidate_descriptions": {
+      "EVIDENCE_SUFFICIENT": "All required checks are current and support completion.",
+      "EVIDENCE_INCOMPLETE": "Required evidence or verification is still missing.",
+      "BLOCKED": "A concrete blocker prevents safe completion."
+    }
   },
   {
     "id": "completion_support-02",
@@ -1283,7 +1828,12 @@
       "EVIDENCE_SUFFICIENT",
       "EVIDENCE_INCOMPLETE",
       "BLOCKED"
-    ]
+    ],
+    "candidate_descriptions": {
+      "EVIDENCE_SUFFICIENT": "All required checks are current and support completion.",
+      "EVIDENCE_INCOMPLETE": "Required evidence or verification is still missing.",
+      "BLOCKED": "A concrete blocker prevents safe completion."
+    }
   },
   {
     "id": "completion_support-03",
@@ -1296,7 +1846,12 @@
       "EVIDENCE_SUFFICIENT",
       "EVIDENCE_INCOMPLETE",
       "BLOCKED"
-    ]
+    ],
+    "candidate_descriptions": {
+      "EVIDENCE_SUFFICIENT": "All required checks are current and support completion.",
+      "EVIDENCE_INCOMPLETE": "Required evidence or verification is still missing.",
+      "BLOCKED": "A concrete blocker prevents safe completion."
+    }
   },
   {
     "id": "completion_support-04",
@@ -1309,7 +1864,12 @@
       "EVIDENCE_SUFFICIENT",
       "EVIDENCE_INCOMPLETE",
       "BLOCKED"
-    ]
+    ],
+    "candidate_descriptions": {
+      "EVIDENCE_SUFFICIENT": "All required checks are current and support completion.",
+      "EVIDENCE_INCOMPLETE": "Required evidence or verification is still missing.",
+      "BLOCKED": "A concrete blocker prevents safe completion."
+    }
   },
   {
     "id": "completion_support-05",
@@ -1322,7 +1882,12 @@
       "EVIDENCE_SUFFICIENT",
       "EVIDENCE_INCOMPLETE",
       "BLOCKED"
-    ]
+    ],
+    "candidate_descriptions": {
+      "EVIDENCE_SUFFICIENT": "All required checks are current and support completion.",
+      "EVIDENCE_INCOMPLETE": "Required evidence or verification is still missing.",
+      "BLOCKED": "A concrete blocker prevents safe completion."
+    }
   },
   {
     "id": "completion_support-06",
@@ -1335,7 +1900,12 @@
       "EVIDENCE_SUFFICIENT",
       "EVIDENCE_INCOMPLETE",
       "BLOCKED"
-    ]
+    ],
+    "candidate_descriptions": {
+      "EVIDENCE_SUFFICIENT": "All required checks are current and support completion.",
+      "EVIDENCE_INCOMPLETE": "Required evidence or verification is still missing.",
+      "BLOCKED": "A concrete blocker prevents safe completion."
+    }
   },
   {
     "id": "completion_support-07",
@@ -1348,7 +1918,12 @@
       "EVIDENCE_SUFFICIENT",
       "EVIDENCE_INCOMPLETE",
       "BLOCKED"
-    ]
+    ],
+    "candidate_descriptions": {
+      "EVIDENCE_SUFFICIENT": "All required checks are current and support completion.",
+      "EVIDENCE_INCOMPLETE": "Required evidence or verification is still missing.",
+      "BLOCKED": "A concrete blocker prevents safe completion."
+    }
   },
   {
     "id": "completion_support-08",
@@ -1361,7 +1936,12 @@
       "EVIDENCE_SUFFICIENT",
       "EVIDENCE_INCOMPLETE",
       "BLOCKED"
-    ]
+    ],
+    "candidate_descriptions": {
+      "EVIDENCE_SUFFICIENT": "All required checks are current and support completion.",
+      "EVIDENCE_INCOMPLETE": "Required evidence or verification is still missing.",
+      "BLOCKED": "A concrete blocker prevents safe completion."
+    }
   },
   {
     "id": "completion_support-09",
@@ -1374,7 +1954,12 @@
       "EVIDENCE_SUFFICIENT",
       "EVIDENCE_INCOMPLETE",
       "BLOCKED"
-    ]
+    ],
+    "candidate_descriptions": {
+      "EVIDENCE_SUFFICIENT": "All required checks are current and support completion.",
+      "EVIDENCE_INCOMPLETE": "Required evidence or verification is still missing.",
+      "BLOCKED": "A concrete blocker prevents safe completion."
+    }
   },
   {
     "id": "completion_support-10",
@@ -1387,7 +1972,12 @@
       "EVIDENCE_SUFFICIENT",
       "EVIDENCE_INCOMPLETE",
       "BLOCKED"
-    ]
+    ],
+    "candidate_descriptions": {
+      "EVIDENCE_SUFFICIENT": "All required checks are current and support completion.",
+      "EVIDENCE_INCOMPLETE": "Required evidence or verification is still missing.",
+      "BLOCKED": "A concrete blocker prevents safe completion."
+    }
   },
   {
     "id": "completion_support-11",
@@ -1400,7 +1990,12 @@
       "EVIDENCE_SUFFICIENT",
       "EVIDENCE_INCOMPLETE",
       "BLOCKED"
-    ]
+    ],
+    "candidate_descriptions": {
+      "EVIDENCE_SUFFICIENT": "All required checks are current and support completion.",
+      "EVIDENCE_INCOMPLETE": "Required evidence or verification is still missing.",
+      "BLOCKED": "A concrete blocker prevents safe completion."
+    }
   },
   {
     "id": "completion_support-12",
@@ -1413,7 +2008,12 @@
       "EVIDENCE_SUFFICIENT",
       "EVIDENCE_INCOMPLETE",
       "BLOCKED"
-    ]
+    ],
+    "candidate_descriptions": {
+      "EVIDENCE_SUFFICIENT": "All required checks are current and support completion.",
+      "EVIDENCE_INCOMPLETE": "Required evidence or verification is still missing.",
+      "BLOCKED": "A concrete blocker prevents safe completion."
+    }
   },
   {
     "id": "completion_support-13",
@@ -1426,7 +2026,12 @@
       "EVIDENCE_SUFFICIENT",
       "EVIDENCE_INCOMPLETE",
       "BLOCKED"
-    ]
+    ],
+    "candidate_descriptions": {
+      "EVIDENCE_SUFFICIENT": "All required checks are current and support completion.",
+      "EVIDENCE_INCOMPLETE": "Required evidence or verification is still missing.",
+      "BLOCKED": "A concrete blocker prevents safe completion."
+    }
   },
   {
     "id": "completion_support-14",
@@ -1439,7 +2044,12 @@
       "EVIDENCE_SUFFICIENT",
       "EVIDENCE_INCOMPLETE",
       "BLOCKED"
-    ]
+    ],
+    "candidate_descriptions": {
+      "EVIDENCE_SUFFICIENT": "All required checks are current and support completion.",
+      "EVIDENCE_INCOMPLETE": "Required evidence or verification is still missing.",
+      "BLOCKED": "A concrete blocker prevents safe completion."
+    }
   },
   {
     "id": "completion_support-15",
@@ -1452,6 +2062,11 @@
       "EVIDENCE_SUFFICIENT",
       "EVIDENCE_INCOMPLETE",
       "BLOCKED"
-    ]
+    ],
+    "candidate_descriptions": {
+      "EVIDENCE_SUFFICIENT": "All required checks are current and support completion.",
+      "EVIDENCE_INCOMPLETE": "Required evidence or verification is still missing.",
+      "BLOCKED": "A concrete blocker prevents safe completion."
+    }
   }
 ]

@@ -92,7 +92,7 @@ def run_nanojev(rows, checkpoint: Path):
     predictions, distributions, latencies = [], [], []
     start = time.perf_counter()
     for row in rows:
-        question = {"q": {"type": "choice", "instructions": row["question"], "criteria": {c: c for c in row["candidates"]}}}
+        question = {"q": {"type": "choice", "instructions": row["question"], "criteria": row["candidate_descriptions"]}}
         batch = provider.decide(row["state"], question)
         d = batch.decisions[0]
         predictions.append(d.selected)

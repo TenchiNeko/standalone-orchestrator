@@ -125,11 +125,55 @@ FAMILIES = {
     ]),
 }
 
+CRITERIA_TEXT = {
+    "operation_result": {
+        "SUCCESS": "The requested operation is confirmed by an authoritative postcondition.",
+        "FAILURE": "The requested operation is confirmed not to have completed.",
+        "UNCERTAIN": "The operation outcome is unknown and must not be retried without reconciliation.",
+    },
+    "progress_status": {
+        "NEW_EVIDENCE": "A check produced materially new observed evidence.",
+        "STATE_CHANGED": "The relevant source, artifact, or external state changed.",
+        "NO_NEW_EVIDENCE": "The observed facts and relevant state are unchanged.",
+        "REPEATING": "The same investigation is being repeated without new evidence.",
+    },
+    "failure_source": {
+        "CODE": "The implementation or source logic causes the failure.",
+        "TEST": "The test or fixture is incorrect or stale.",
+        "TOOL": "The tool wrapper or invocation produced the failure.",
+        "ENVIRONMENT": "The runtime environment or service caused the failure.",
+        "REQUIREMENT": "The stated requirements are contradictory or impossible.",
+        "UNKNOWN": "The available evidence cannot identify the source.",
+    },
+    "hypothesis_status": {
+        "NEW": "This hypothesis has not yet been investigated.",
+        "ALREADY_TESTED": "This hypothesis was already tested with the current evidence.",
+        "REJECTED": "A controlled check disproved this hypothesis.",
+        "INSUFFICIENT_EVIDENCE": "The evidence is insufficient to classify this hypothesis.",
+    },
+    "next_investigation": {
+        "VERIFY": "Perform a concrete read-only check of a missing current fact.",
+        "DIAGNOSE": "Separate plausible failure causes with a targeted read-only check.",
+        "REVIEW": "Inspect a bounded change or finding against supplied evidence.",
+        "ESCALATE": "Stop and request review because safe evidence is insufficient.",
+    },
+    "review_finding": {
+        "SUPPORTED": "The finding is supported by a current reproduction or direct evidence.",
+        "UNSUPPORTED": "Current evidence contradicts the finding or its cited location.",
+        "INSUFFICIENT_EVIDENCE": "The finding may be plausible but lacks enough evidence.",
+    },
+    "completion_support": {
+        "EVIDENCE_SUFFICIENT": "All required checks are current and support completion.",
+        "EVIDENCE_INCOMPLETE": "Required evidence or verification is still missing.",
+        "BLOCKED": "A concrete blocker prevents safe completion.",
+    },
+}
+
 def build() -> list[dict]:
     rows = []
     for family, (candidates, items) in FAMILIES.items():
         for index, (gold, state, instruction) in enumerate(items, 1):
-            rows.append({"id": f"{family}-{index:02d}", "family": family, "split": "development" if index <= 10 else "final", "state": state, "gold": gold, "question": instruction, "candidates": candidates})
+            rows.append({"id": f"{family}-{index:02d}", "family": family, "split": "development" if index <= 10 else "final", "state": state, "gold": gold, "question": instruction, "candidates": candidates, "candidate_descriptions": CRITERIA_TEXT[family]})
     return rows
 
 if __name__ == "__main__":
