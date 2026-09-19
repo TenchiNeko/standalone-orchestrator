@@ -6,7 +6,7 @@
 - `/home/brandon/link-public-baseline` — public-style local baseline, `0e358e0e1496455ebd3120473f811e321491b2bb`, clean Git status.
 - `/home/brandon/francesca-growth-lab/tools/standalone_orchestrator` — nested copy in a dirty private repository; not selected.
 - `/home/brandon/francesca_orchestrator_full_quarantine_20260516` — quarantine copy containing private chatbot assets; not selected.
-- `/home/brandon/link` — later/private automation tree; not selected.
+- `/home/brandon/link` — later/private automation tree, `a2daea9`, four dirty entries at inspection; not selected.
 - `/home/brandon/projects/standalone-orchestrator-v2` — fresh public clone at `0e358e0e1496455ebd3120473f811e321491b2bb`, feature work is local only.
 
 NAS was not accessed: the local/public source was sufficient and no archive extraction was necessary.
