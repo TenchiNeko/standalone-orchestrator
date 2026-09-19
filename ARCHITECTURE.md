@@ -10,4 +10,4 @@ OCR starts in delegation mode: deterministic `ocr delegate preview/rule` selecti
 
 Jev is optional. `off` is the default; `shadow` records typed judgments without routing changes; `advisory` is reserved for low-risk diagnostics. Jev cannot authorize mutations or completion.
 
-Vision is explicit: `BrowserTools` records URL, viewport, capture time/path, and SHA-256; `QwenAdapter.chat_with_image` sends screenshot bytes as an image input. A filename, DOM text, or pixel-analysis result is not accepted as visual evidence.
+Vision is explicit: `BrowserTools` records URL, viewport, capture time/path, and SHA-256; its local-only sequence supports bounded navigate/click/type/inspect/screenshot steps; `QwenAdapter.chat_with_image` sends screenshot bytes as an image input. A filename, DOM text, or pixel-analysis result is not accepted as visual evidence.
