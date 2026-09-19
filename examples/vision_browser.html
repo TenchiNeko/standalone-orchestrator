@@ -1,3 +1,4 @@
 <!doctype html><meta charset="utf-8"><title>Local visual fixture</title>
 <style>body{font:24px sans-serif;background:#f4f1ea;padding:60px}.panel{width:520px;padding:40px;background:white;border-radius:16px}.indicator{width:90px;height:90px;border-radius:50%;background:#d44;display:inline-block;vertical-align:middle;margin-right:24px}.label{font-weight:700}</style>
 <div class="panel"><span class="indicator" aria-label="state indicator"></span><span class="label">Ready</span><button id="fix" style="display:block;margin-top:30px;font-size:22px">Apply visual fix</button></div>
+<script>document.getElementById('fix').onclick=()=>{document.querySelector('.indicator').style.background='#2a6';document.querySelector('.label').textContent='Verified';}</script>

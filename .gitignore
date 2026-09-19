@@ -33,3 +33,4 @@ playbook.json
 # Generated vision evidence
 examples/vision-before.png
 examples/vision-result.json
+examples/sequence-*.png
