@@ -1,0 +1,102 @@
+from __future__ import annotations
+
+import json
+import subprocess
+from pathlib import Path
+
+from .jev import JevAdapter
+from .ocr import OCRDelegation
+from .state import Criterion, Phase, StateStore, Task, TaskContract, new_task, source_hash
+from .tools import ToolError, ToolRegistry, WorkspaceTools
+
+
+class Controller:
+    def __init__(self, state_dir: Path, qwen=None, jev_mode: str = "off"):
+        self.state_dir = state_dir; self.store = StateStore(state_dir / "state.sqlite3"); self.qwen = qwen; self.jev = JevAdapter(jev_mode); self.ocr = OCRDelegation()
+
+    def intake(self, contract: TaskContract, workspace: Path, budget: int = 12) -> Task:
+        task = new_task(contract, workspace, budget); self.store.save_task(task); self.store.event(task.task_id, "intake", {"phase": task.phase.value, "source_hash": source_hash(workspace)})
+        return task
+
+    def _phase(self, task: Task, phase: Phase):
+        task.phase = phase; self.store.save_task(task); self.store.event(task.task_id, "phase", {"phase": phase.value})
+
+    def run(self, task: Task, review: bool = True) -> Task:
+        root = Path(task.workspace); tools = WorkspaceTools(root, task.contract.permitted_files, task.contract.permitted_actions, task.contract.test_command)
+        review_ok = not review
+        self._phase(task, Phase.INSPECT); self.store.evidence(task.task_id, "inspect", root, {"files": sorted(p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file() and ".git" not in p.parts)})
+        self._phase(task, Phase.PLAN); self.store.evidence(task.task_id, "plan", root, {"criteria": [c.description for c in task.contract.criteria]}, task.contract.permitted_files)
+        if self.qwen and task.budget_calls < task.budget_limit:
+            response = self.qwen.chat([{"role": "system", "content": "Return a concise implementation plan. Do not claim execution or completion."}, {"role": "user", "content": json.dumps({"goal": task.contract.goal, "criteria": [c.description for c in task.contract.criteria]})}], max_tokens=350)
+            task.budget_calls += 1; self.store.evidence(task.task_id, "qwen_plan", root, {"content": response.content, "usage": response.usage, "finish_reason": response.finish_reason, "elapsed": response.elapsed}, task.contract.permitted_files)
+        self._phase(task, Phase.IMPLEMENT)
+        if self.qwen and task.budget_calls < task.budget_limit and "read_file" in task.contract.permitted_actions:
+            self._bounded_worker(task, root, tools)
+        else:
+            self.store.event(task.task_id, "implementation", {"mode": "deterministic", "note": "model worker skipped by budget or contract"})
+        self._phase(task, Phase.TEST); result = tools.run_tests(); ref = self.store.evidence(task.task_id, "test", root, result, task.contract.permitted_files); self.store.event(task.task_id, "test_result", {"ref": ref, "exit_code": result["exit_code"]})
+        if result["exit_code"] != 0:
+            task.phase = Phase.BLOCKED; task.unresolved.append("required tests failed"); self.store.save_task(task); return task
+        if review:
+            self._phase(task, Phase.REVIEW)
+            try:
+                preview = self.ocr.preview(root); self.store.evidence(task.task_id, "ocr_preview", root, preview, task.contract.permitted_files)
+                files = [x.get("path") for x in preview.get("files", []) if isinstance(x, dict) and x.get("path")]
+                if files: self.store.evidence(task.task_id, "ocr_rules", root, {"files": files, "rules": self.ocr.rules(root, files)}, files)
+                review_ok = True
+            except Exception as exc:
+                task.unresolved.append(f"OCR unavailable: {exc}")
+        self._phase(task, Phase.FINAL_VERIFY)
+        fresh = tools.run_tests(); ref = self.store.evidence(task.task_id, "final_test", root, fresh, task.contract.permitted_files)
+        if fresh["exit_code"] != 0: task.phase = Phase.BLOCKED; task.unresolved.append("final tests failed")
+        elif not review_ok: task.phase = Phase.NEEDS_REVIEW
+        elif not any(c.required for c in task.contract.criteria): task.phase = Phase.BLOCKED; task.unresolved.append("contract has no required criteria")
+        else:
+            for c in task.contract.criteria:
+                if c.required:
+                    c.status = "verified"; c.evidence.append(ref); c.verified_source_hash = source_hash(root, task.contract.permitted_files)
+                elif c.status == "pending":
+                    c.status = "advisory"
+            task.phase = Phase.COMPLETE
+        self.store.save_task(task); return task
+
+    def _bounded_worker(self, task: Task, root: Path, tools: WorkspaceTools) -> None:
+        """Run a short native-tool loop; state and filesystem remain coordinator-owned."""
+        messages = [
+            {"role": "system", "content": "You are a bounded implementation worker. Inspect before editing. Use only the supplied native tools and only permitted files. Never claim a test or edit happened unless a tool result proves it. Stop when the contract is satisfied or report the concrete blocker."},
+            {"role": "user", "content": json.dumps({"goal": task.contract.goal, "criteria": [c.description for c in task.contract.criteria], "permitted_files": task.contract.permitted_files, "permitted_actions": task.contract.permitted_actions})},
+        ]
+        registry = ToolRegistry()
+        seen_actions: set[tuple[str, str, str]] = set()
+        while task.budget_calls < task.budget_limit:
+            response = self.qwen.chat(messages, tools=registry.schemas(), max_tokens=1000)
+            task.budget_calls += 1
+            self.store.evidence(task.task_id, "qwen_worker", root, {"content": response.content, "usage": response.usage, "finish_reason": response.finish_reason, "elapsed": response.elapsed}, task.contract.permitted_files)
+            if not response.tool_calls:
+                self.store.event(task.task_id, "worker_stopped", {"reason": "no_tool_call", "content": response.content[:2000]})
+                return
+            assistant = {"role": "assistant", "content": response.content, "tool_calls": response.tool_calls}
+            messages.append(assistant)
+            for call in response.tool_calls:
+                fn = call.get("function") or call
+                name = fn.get("name")
+                raw = fn.get("arguments", {})
+                args = {}
+                try:
+                    args = json.loads(raw) if isinstance(raw, str) else raw
+                    if not isinstance(args, dict): raise ValueError("arguments must be an object")
+                    action_key = (str(name), json.dumps(args, sort_keys=True), source_hash(root, task.contract.permitted_files))
+                    if action_key in seen_actions:
+                        self.store.event(task.task_id, "no_progress", {"name": name, "reason": "same action and source version repeated"})
+                        return
+                    seen_actions.add(action_key)
+                    result = registry.dispatch(tools, name, args)
+                    status = "ok"
+                except (ToolError, ValueError, TypeError, json.JSONDecodeError) as exc:
+                    result = {"error": str(exc)}; status = "rejected"
+                self.store.event(task.task_id, "tool_call", {"name": name, "status": status, "arguments": {k: ("<content>" if k == "content" else v) for k, v in (args.items() if isinstance(args, dict) else [])}})
+                call_id = call.get("id", f"tool-{task.budget_calls}")
+                messages.append({"role": "tool", "tool_call_id": call_id, "name": name or "unknown", "content": json.dumps(result)[:20_000]})
+
+    def status(self, task_id: str) -> dict:
+        task = self.store.load_task(task_id); return {"task_id": task.task_id, "phase": task.phase.value, "criteria": [c.__dict__ for c in task.contract.criteria], "unresolved": task.unresolved, "events": self.store.events(task_id)}

@@ -1,0 +1,9 @@
+{
+  "goal": "Run the bounded local verification workflow",
+  "workspace": "examples/workspace",
+  "permitted_files": ["hello.py", "test_hello.py"],
+  "permitted_actions": ["read_file", "write_file", "run_tests"],
+  "criteria": [{"key": "tests", "description": "the required unittest suite passes"}],
+  "budget_limit": 8,
+  "test_command": ["python", "-m", "unittest", "test_hello", "-v"]
+}
