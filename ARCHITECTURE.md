@@ -16,3 +16,11 @@ Jev adapter remains optional reference code (`--jev` is off by default) and
 does not require a credential for the normal install.
 
 Vision is explicit: `BrowserTools` records URL, viewport, capture time/path, and SHA-256; its local-only sequence supports bounded navigate/click/type/inspect/screenshot steps; `QwenAdapter.chat_with_image` sends screenshot bytes as an image input. A filename, DOM text, or pixel-analysis result is not accepted as visual evidence.
+
+`ContextGC` is a reversible shadow-first block selector. It stores exact
+tool evidence locally and can emit recall pointers only when explicitly
+enabled. `BrowserCandidateRouter` separates local control extraction,
+typed candidate selection, deterministic Playwright execution, and fresh
+verification. `ModelRouter` currently records only future route suggestions
+(`ROUTINE_QWEN`, `HARD_QWEN`, `ESCALATE_STRONG_MODEL`,
+`DETERMINISTIC_ONLY`); the effective route remains deterministic.

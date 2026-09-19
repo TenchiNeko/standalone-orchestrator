@@ -25,7 +25,7 @@ def main(argv=None):
     decision_name = getattr(args, "decision_provider", "off")
     ctl = Controller(state_dir, qwen=QwenAdapter(base_url=os.environ.get("QWEN_BASE_URL", "http://127.0.0.1:18089/v1"), model=os.environ.get("QWEN_MODEL", "orca27b-ultra-q6-mtp"), api_key=key), jev_mode=getattr(args, "jev", "off"), decision_provider=make_decision_provider(decision_name), decision_mode=getattr(args, "decision_mode", "shadow"))
     if args.cmd == "run":
-        spec = json.loads(Path(args.task).read_text()); contract = TaskContract(spec["goal"], spec["permitted_files"], spec["permitted_actions"], [Criterion(**c) for c in spec["criteria"]], spec.get("version", 1), spec.get("test_command")); task = ctl.intake(contract, Path(spec["workspace"]).resolve(), spec.get("budget_limit", 12)); task = ctl.run(task); print(json.dumps(ctl.status(task.task_id), indent=2)); return 0 if task.phase.value == "complete" else 2
+        spec = json.loads(Path(args.task).read_text()); contract = TaskContract(spec["goal"], spec["permitted_files"], spec["permitted_actions"], [Criterion(**c) for c in spec["criteria"]], spec.get("version", 1), spec.get("test_command"), spec.get("visual_required", False)); task = ctl.intake(contract, Path(spec["workspace"]).resolve(), spec.get("budget_limit", 12)); task = ctl.run(task); print(json.dumps(ctl.status(task.task_id), indent=2)); return 0 if task.phase.value == "complete" else 2
     if args.cmd == "resume":
         task = ctl.store.load_task(args.task_id); task = ctl.run(task); print(json.dumps(ctl.status(task.task_id), indent=2)); return 0 if task.phase.value == "complete" else 2
     if args.cmd == "cancel":

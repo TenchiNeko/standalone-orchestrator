@@ -7,7 +7,8 @@ from pathlib import Path
 from .jev import JevAdapter
 from .ocr import OCRDelegation
 from .decisions import DecisionProvider, DeterministicDecisionProvider
-from .state import Criterion, Phase, StateStore, Task, TaskContract, new_task, source_hash
+from .context_gc import ContextBlock, ContextGC, ContextResult
+from .state import Criterion, Phase, StateStore, Task, TaskContract, file_manifest, new_task, source_hash
 from .tools import ToolError, ToolRegistry, WorkspaceTools
 
 
@@ -17,7 +18,7 @@ class Controller:
         self.state_dir = state_dir; self.store = StateStore(state_dir / "state.sqlite3"); self.qwen = qwen; self.jev = JevAdapter(jev_mode); self.ocr = OCRDelegation(); self.decision_provider = decision_provider or DeterministicDecisionProvider(); self.decision_mode = decision_mode
 
     def intake(self, contract: TaskContract, workspace: Path, budget: int = 12) -> Task:
-        task = new_task(contract, workspace, budget); self.store.save_task(task); self.store.event(task.task_id, "intake", {"phase": task.phase.value, "source_hash": source_hash(workspace)})
+        task = new_task(contract, workspace, budget); self.store.save_task(task); self.store.event(task.task_id, "intake", {"phase": task.phase.value, "source_hash": source_hash(workspace), "file_manifest": file_manifest(workspace, contract.permitted_files), "visual_required": contract.visual_required})
         return task
 
     def _phase(self, task: Task, phase: Phase):
@@ -52,9 +53,10 @@ class Controller:
                 task.unresolved.append(f"OCR unavailable: {exc}")
         self._phase(task, Phase.FINAL_VERIFY)
         fresh = tools.run_tests(); ref = self.store.evidence(task.task_id, "final_test", root, fresh, task.contract.permitted_files)
-        if fresh["exit_code"] != 0: task.phase = Phase.BLOCKED; task.unresolved.append("final tests failed")
-        elif not review_ok: task.phase = Phase.NEEDS_REVIEW
-        elif not any(c.required for c in task.contract.criteria): task.phase = Phase.BLOCKED; task.unresolved.append("contract has no required criteria")
+        gate = self.completion_gate(task, root, review_ok)
+        if not gate["allowed"]:
+            task.phase = Phase.NEEDS_REVIEW if gate["needs_review"] else Phase.BLOCKED
+            task.unresolved.append(gate["reason"])
         else:
             for c in task.contract.criteria:
                 if c.required:
@@ -63,6 +65,33 @@ class Controller:
                     c.status = "advisory"
             task.phase = Phase.COMPLETE
         self.store.save_task(task); return task
+
+    def completion_gate(self, task: Task, root: Path, review_ok: bool = True) -> dict[str, object]:
+        """Deterministic completion facts; model prose cannot make this pass."""
+        current = self.store.current_successful_check(task.task_id, root, task.contract.permitted_files)
+        unresolved_mutations = self.store.unresolved_mutations(task.task_id)
+        visual = None
+        if task.contract.visual_required:
+            with self.store._db() as db:
+                rows = db.execute("SELECT id, source_hash FROM evidence WHERE task_id=? AND kind='visual_verify' ORDER BY id DESC", (task.task_id,)).fetchall()
+            digest = source_hash(root, task.contract.permitted_files)
+            visual = next((f"evidence:{row['id']}" for row in rows if row["source_hash"] == digest), None)
+        required_pending = [criterion.key for criterion in task.contract.criteria if criterion.required and criterion.status != "verified"]
+        if not current:
+            return {"allowed": False, "needs_review": False, "reason": "required code changes have no current successful check after the latest relevant edit", "check": None, "visual": visual, "unresolved_mutations": unresolved_mutations, "pending": required_pending}
+        if not review_ok:
+            return {"allowed": False, "needs_review": True, "reason": "required review evidence is unavailable", "check": current, "visual": visual, "unresolved_mutations": unresolved_mutations, "pending": required_pending}
+        if task.contract.visual_required and not visual:
+            return {"allowed": False, "needs_review": False, "reason": "required visual verification is missing or stale", "check": current, "visual": None, "unresolved_mutations": unresolved_mutations, "pending": required_pending}
+        if unresolved_mutations:
+            return {"allowed": False, "needs_review": True, "reason": "an unresolved mutation outcome requires reconciliation", "check": current, "visual": visual, "unresolved_mutations": unresolved_mutations, "pending": required_pending}
+        if not task.contract.criteria:
+            return {"allowed": False, "needs_review": False, "reason": "contract has no required criteria", "check": current, "visual": visual, "unresolved_mutations": [], "pending": []}
+        return {"allowed": True, "needs_review": False, "reason": "current successful check and required evidence are present", "check": current, "visual": visual, "unresolved_mutations": [], "pending": required_pending}
+
+    def compact_context(self, task: Task, root: Path, blocks: list[ContextBlock], state: str, mode: str = "shadow") -> ContextResult:
+        """Expose reversible context selection without changing the worker loop by default."""
+        return ContextGC(self.state_dir, self.store, self.decision_provider, mode=mode).process(task.task_id, root, blocks, state)
 
     def _decision_probe(self, task: Task, root: Path) -> None:
         questions = {"next_read_only": {"type": "choice", "instructions": "Choose the next low-risk read-only supervisory direction. Do not authorize edits, retries, test skipping, scope changes, or completion.", "criteria": {"VERIFY": "Check a concrete missing fact or current test result.", "DIAGNOSE": "Classify an observed failure before choosing another check.", "REVIEW": "Inspect existing evidence or a bounded review finding.", "ESCALATE": "Evidence is insufficient and a human or explicit blocker is needed."}}}
@@ -117,4 +146,4 @@ class Controller:
                 messages.append({"role": "tool", "tool_call_id": call_id, "name": name or "unknown", "content": json.dumps(result)[:20_000]})
 
     def status(self, task_id: str) -> dict:
-        task = self.store.load_task(task_id); return {"task_id": task.task_id, "phase": task.phase.value, "criteria": [c.__dict__ for c in task.contract.criteria], "unresolved": task.unresolved, "events": self.store.events(task_id)}
+        task = self.store.load_task(task_id); root = Path(task.workspace); return {"task_id": task.task_id, "phase": task.phase.value, "criteria": [c.__dict__ for c in task.contract.criteria], "unresolved": task.unresolved, "completion_facts": self.completion_gate(task, root), "events": self.store.events(task_id)}

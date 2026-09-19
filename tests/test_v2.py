@@ -7,6 +7,22 @@ from orchestrator_v2.state import Criterion, Phase, StateStore, TaskContract, ne
 from orchestrator_v2.tools import ToolError, ToolRegistry, WorkspaceTools
 from orchestrator_v2.controller import Controller
 from orchestrator_v2.qwen import QwenResponse
+from orchestrator_v2.context_gc import ContextBlock, ContextGC, HIDE_BUT_RECALLABLE
+from orchestrator_v2.decisions import Decision, DecisionBatch, DecisionProvider
+from orchestrator_v2.browser_router import BrowserCandidate, BrowserCandidateRouter
+from orchestrator_v2.routing import ModelRouter, ROUTINE_QWEN
+
+
+class FixedDecisionProvider(DecisionProvider):
+    name = "fixed"
+
+    def __init__(self, selected):
+        self.selected = selected
+
+    def decide(self, state, questions):
+        qid, question = next(iter(questions.items()))
+        candidates = list(question["criteria"])
+        return DecisionBatch(self.name, [Decision(qid, candidates, self.selected, {c: (1.0 if c == self.selected else 0.0) for c in candidates}, "fixed", 0.0)], 0.0)
 
 
 class V2Tests(unittest.TestCase):
@@ -30,6 +46,58 @@ class V2Tests(unittest.TestCase):
             self.assertTrue(store.evidence_is_current(ref, root, ["a.py"]))
             (root / "a.py").write_text("x=2")
             self.assertFalse(store.evidence_is_current(ref, root, ["a.py"]))
+
+    def test_completion_gate_rejects_passing_check_before_latest_edit(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d); (root / "a.py").write_text("x=1")
+            contract = TaskContract("repair", ["a.py"], ["run_tests"], [Criterion("c", "current check")])
+            ctl = Controller(root / "state"); task = ctl.intake(contract, root)
+            intake = ctl.store.events(task.task_id)[0]
+            self.assertIn("file_manifest", intake["payload"])
+            ctl.store.evidence(task.task_id, "test", root, {"command": ["python", "-m", "unittest"], "exit_code": 0, "timed_out": False}, ["a.py"])
+            (root / "a.py").write_text("x=2")
+            gate = ctl.completion_gate(task, root)
+            self.assertFalse(gate["allowed"])
+            self.assertIn("no current successful check", gate["reason"])
+
+    def test_completion_gate_blocks_unknown_mutation_and_missing_visual(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d); (root / "a.py").write_text("x=1")
+            contract = TaskContract("repair", ["a.py"], ["run_tests"], [Criterion("c", "current check")], visual_required=True)
+            ctl = Controller(root / "state"); task = ctl.intake(contract, root)
+            ctl.store.evidence(task.task_id, "final_test", root, {"command": ["python", "-m", "unittest"], "exit_code": 0, "timed_out": False}, ["a.py"])
+            ctl.store.mutation_intent(task.task_id, "write", "u1"); ctl.store.mutation_ack(task.task_id, "u1", "unknown")
+            gate = ctl.completion_gate(task, root)
+            self.assertFalse(gate["allowed"])
+            self.assertIn("visual verification", gate["reason"])
+            ctl.store.evidence(task.task_id, "visual_verify", root, {"screenshot": "fixture.png"}, ["a.py"])
+            gate = ctl.completion_gate(task, root)
+            self.assertFalse(gate["allowed"])
+            self.assertIn("unresolved mutation", gate["reason"])
+
+    def test_context_shadow_retains_exact_block_and_recall(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d); (root / "a.py").write_text("x=1")
+            ctl = Controller(root / "state"); task = ctl.intake(TaskContract("inspect", ["a.py"], ["read_file"], [Criterion("c", "inspect")]), root)
+            gc = ContextGC(root / "state", ctl.store, FixedDecisionProvider(HIDE_BUT_RECALLABLE), mode="shadow")
+            original = "verbose output " * 300
+            result = gc.process(task.task_id, root, [ContextBlock("b1", "read", original, "a.py")], "goal")
+            self.assertEqual(result.rendered[0], original)
+            self.assertEqual(gc.recall(result.decisions[0].artifact), original)
+            self.assertTrue(result.decisions[0].shadow)
+
+    def test_browser_router_never_executes_in_shadow_and_validates_candidates(self):
+        router = BrowserCandidateRouter(FixedDecisionProvider("save"), mode="shadow")
+        candidates = [BrowserCandidate("save", "button", "Save", "click")]
+        called = []
+        route = router.route("save", {"url": "http://127.0.0.1"}, candidates, lambda c: called.append(c) or {"ok": True}, lambda: {"ok": True})
+        self.assertEqual(route.selected, "save"); self.assertFalse(route.executed); self.assertEqual(called, [])
+
+    def test_model_router_is_shadow_only(self):
+        router = ModelRouter(FixedDecisionProvider("ESCALATE_STRONG_MODEL"), mode="advisory")
+        judgment = router.classify("routine", {"tests": "pass"})
+        self.assertEqual(judgment.selected, "ESCALATE_STRONG_MODEL")
+        self.assertEqual(router.effective_route(judgment), ROUTINE_QWEN)
 
     def test_tools_reject_escape_and_arbitrary_command(self):
         with tempfile.TemporaryDirectory() as d:

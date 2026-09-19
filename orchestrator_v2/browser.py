@@ -55,6 +55,16 @@ class BrowserTools:
         p = subprocess.run(["node", "-e", script], env=env, cwd=self.workspace, check=True, timeout=60, capture_output=True, text=True)
         return json.loads(p.stdout.strip().splitlines()[-1])
 
+    def actionable_controls(self, url: str, viewport: dict[str, int] | None = None) -> list[dict]:
+        """Return a bounded, deterministic control table; no selectors leave this method."""
+        if not self.playwright_package:
+            raise RuntimeError("PLAYWRIGHT_PACKAGE is required for browser controls")
+        self._check_local_url(url); viewport = viewport or {"width": 1280, "height": 800}
+        script = r'''const {chromium}=require(process.env.PLAYWRIGHT_PACKAGE);(async()=>{const b=await chromium.launch({headless:true,executablePath:process.env.BROWSER_EXECUTABLE||undefined,args:['--no-sandbox']});const p=await b.newPage({viewport:{width:Number(process.env.VW),height:Number(process.env.VH)}});await p.goto(process.env.URL,{waitUntil:'networkidle'});const rows=await p.locator('button,input,textarea,select,a,[role="button"],[role="link"]').evaluateAll((els)=>els.map((e,i)=>{const r=e.getBoundingClientRect(),label=(e.getAttribute('aria-label')||e.innerText||e.getAttribute('placeholder')||e.getAttribute('name')||'').trim().replace(/\s+/g,' ').slice(0,160);const tag=e.tagName.toLowerCase();const kind=tag==='input'?(e.type||'textbox'):(tag==='a'?'link':tag);return {id:'control-'+(i+1),index:i,kind,label,enabled:!e.disabled,visible:!!(r.width&&r.height)};}).filter(x=>x.visible&&x.enabled&&x.label));await b.close();console.log(JSON.stringify(rows.slice(0,64)))})().catch(e=>{console.error(e);process.exit(1)})'''
+        env = {"PATH": os.environ.get("PATH", ""), "PLAYWRIGHT_PACKAGE": self.playwright_package, "BROWSER_EXECUTABLE": os.environ.get("BROWSER_EXECUTABLE", "/usr/bin/google-chrome"), "URL": url, "VW": str(viewport["width"]), "VH": str(viewport["height"])}
+        p = subprocess.run(["node", "-e", script], env=env, cwd=self.workspace, check=True, timeout=60, capture_output=True, text=True)
+        return json.loads(p.stdout.strip().splitlines()[-1])
+
     @staticmethod
     def _check_local_url(url: str) -> None:
         if urlparse(url).hostname not in {"127.0.0.1", "localhost", "::1"}: raise ValueError("browser target must be local")

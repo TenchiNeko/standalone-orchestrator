@@ -47,6 +47,7 @@ class TaskContract:
     criteria: list[Criterion]
     version: int = 1
     test_command: list[str] | None = None
+    visual_required: bool = False
 
     def validate(self) -> None:
         if not self.goal.strip() or not self.criteria:
@@ -89,6 +90,18 @@ def source_hash(root: Path, permitted: list[str] | None = None) -> str:
     return h.hexdigest()
 
 
+def file_manifest(root: Path, permitted: list[str] | None = None) -> dict[str, dict[str, Any]]:
+    """Stable file facts used by completion evidence and stale-check detection."""
+    paths = [root / p for p in permitted] if permitted else sorted(root.rglob("*"))
+    manifest: dict[str, dict[str, Any]] = {}
+    for p in sorted(paths):
+        if p.is_file() and ".git" not in p.parts:
+            rel = p.relative_to(root).as_posix()
+            data = p.read_bytes()
+            manifest[rel] = {"sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data)}
+    return manifest
+
+
 class StateStore:
     """SQLite event/state store; every mutation is transactional."""
 
@@ -127,6 +140,62 @@ class StateStore:
     def event(self, task_id: str, kind: str, payload: dict[str, Any]) -> None:
         with self._db() as db:
             db.execute("INSERT INTO events(task_id,kind,payload,created) VALUES(?,?,?,?)", (task_id, kind, json.dumps(payload), time.time()))
+
+    def evidence_record(self, ref: str) -> dict[str, Any] | None:
+        try:
+            row_id = int(ref.split(":", 1)[1])
+        except (ValueError, IndexError):
+            return None
+        with self._db() as db:
+            row = db.execute("SELECT id, task_id, kind, source_hash, payload, created FROM evidence WHERE id=?", (row_id,)).fetchone()
+        if not row:
+            return None
+        result = dict(row)
+        try:
+            result["payload"] = json.loads(result["payload"])
+        except json.JSONDecodeError:
+            result["payload"] = {}
+        return result
+
+    def current_successful_check(self, task_id: str, root: Path, permitted: list[str] | None = None) -> dict[str, Any] | None:
+        """Return a passing check tied to the current source hash, if one exists."""
+        digest = source_hash(root, permitted)
+        with self._db() as db:
+            rows = db.execute(
+                "SELECT id, kind, source_hash, payload, created FROM evidence "
+                "WHERE task_id=? AND kind IN ('test','final_test') ORDER BY id DESC",
+                (task_id,),
+            ).fetchall()
+        for row in rows:
+            if row["source_hash"] != digest:
+                continue
+            try:
+                payload = json.loads(row["payload"])
+            except json.JSONDecodeError:
+                continue
+            if payload.get("exit_code") == 0 and not payload.get("timed_out"):
+                return {"ref": f"evidence:{row['id']}", "kind": row["kind"], "source_hash": row["source_hash"], "payload": payload, "created": row["created"]}
+        return None
+
+    def unresolved_mutations(self, task_id: str) -> list[dict[str, Any]]:
+        unresolved: list[dict[str, Any]] = []
+        with self._db() as db:
+            rows = db.execute("SELECT kind, payload FROM events WHERE task_id=? AND kind IN ('mutation_intent','mutation_result') ORDER BY id", (task_id,)).fetchall()
+        intents: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            try:
+                payload = json.loads(row["payload"])
+            except json.JSONDecodeError:
+                continue
+            key = payload.get("idempotency_key")
+            if row["kind"] == "mutation_intent" and key:
+                intents[key] = payload
+            elif row["kind"] == "mutation_result" and key:
+                if payload.get("status") == "unknown":
+                    unresolved.append({"idempotency_key": key, "intent": intents.get(key, {}), "result": payload})
+                intents.pop(key, None)
+        unresolved.extend({"idempotency_key": key, "intent": value} for key, value in intents.items())
+        return unresolved
 
     def mutation_intent(self, task_id: str, action: str, idempotency_key: str) -> None:
         self.event(task_id, "mutation_intent", {"action": action, "idempotency_key": idempotency_key, "status": "intent"})
