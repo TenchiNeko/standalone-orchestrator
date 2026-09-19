@@ -1,0 +1,12 @@
+{
+  "name": "typesafe",
+  "version": "0.5.7",
+  "description": "Agent skills for building with the TypeSafe System One API.",
+  "author": {
+    "name": "TypeSafe AI",
+    "url": "https://typesafe.ai"
+  },
+  "homepage": "https://typesafe.ai",
+  "repository": "https://github.com/typesafe-ai/skills",
+  "license": "MIT"
+}

@@ -1,0 +1,15 @@
+{
+  "name": "typesafe-ai",
+  "description": "Agent skills for building with the TypeSafe System One API.",
+  "owner": {
+    "name": "TypeSafe AI",
+    "url": "https://typesafe.ai"
+  },
+  "plugins": [
+    {
+      "name": "typesafe",
+      "description": "Full context on the TypeSafe API: question types, architectural patterns, and best practices",
+      "source": "./"
+    }
+  ]
+}
