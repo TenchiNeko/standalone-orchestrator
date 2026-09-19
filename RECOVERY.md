@@ -2,8 +2,8 @@
 
 ## Sources inspected
 
-- `/home/brandon/standalone-orchestrator` — local fork, `bf50a6041d686d272d592cacf8891987721286f4`, dirty history and private databases/assets; retained unchanged and not executed.
-- `/home/brandon/link-public-baseline` — public-style local baseline, `0e358e0e1496455ebd3120473f811e321491b2bb`.
+- `/home/brandon/standalone-orchestrator` — local fork, `bf50a6041d686d272d592cacf8891987721286f4`, clean Git status at inspection but containing private databases/assets; retained unchanged and not executed.
+- `/home/brandon/link-public-baseline` — public-style local baseline, `0e358e0e1496455ebd3120473f811e321491b2bb`, clean Git status.
 - `/home/brandon/francesca-growth-lab/tools/standalone_orchestrator` — nested copy in a dirty private repository; not selected.
 - `/home/brandon/francesca_orchestrator_full_quarantine_20260516` — quarantine copy containing private chatbot assets; not selected.
 - `/home/brandon/link` — later/private automation tree; not selected.
