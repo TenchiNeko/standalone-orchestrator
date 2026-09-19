@@ -78,6 +78,9 @@ class Task:
     budget_calls: int = 0
     budget_limit: int = 12
     unresolved: list[str] = field(default_factory=list)
+    max_model_seconds: float | None = None
+    max_repeated_actions: int = 3
+    max_investigation_steps: int | None = None
 
 
 def source_hash(root: Path, permitted: list[str] | None = None) -> str:
@@ -141,6 +144,49 @@ class StateStore:
         with self._db() as db:
             db.execute("INSERT INTO events(task_id,kind,payload,created) VALUES(?,?,?,?)", (task_id, kind, json.dumps(payload), time.time()))
 
+    def events_all(self, kind: str | None = None) -> list[dict[str, Any]]:
+        """Return structured events for cross-run and export queries."""
+        with self._db() as db:
+            query = "SELECT id, task_id, kind, payload, created FROM events"
+            args: tuple[Any, ...] = ()
+            if kind:
+                query += " WHERE kind=?"
+                args = (kind,)
+            query += " ORDER BY id"
+            rows = db.execute(query, args).fetchall()
+        result = []
+        for row in rows:
+            item = dict(row)
+            try:
+                item["payload"] = json.loads(item["payload"])
+            except json.JSONDecodeError:
+                item["payload"] = {}
+            result.append(item)
+        return result
+
+    def evidence_rows(self, task_id: str | None = None, kind: str | None = None) -> list[dict[str, Any]]:
+        with self._db() as db:
+            clauses: list[str] = []
+            args: list[Any] = []
+            if task_id:
+                clauses.append("task_id=?"); args.append(task_id)
+            if kind:
+                clauses.append("kind=?"); args.append(kind)
+            query = "SELECT id, task_id, kind, source_hash, payload, created FROM evidence"
+            if clauses:
+                query += " WHERE " + " AND ".join(clauses)
+            query += " ORDER BY id"
+            rows = db.execute(query, args).fetchall()
+        result = []
+        for row in rows:
+            item = dict(row)
+            try:
+                item["payload"] = json.loads(item["payload"])
+            except json.JSONDecodeError:
+                item["payload"] = {}
+            result.append(item)
+        return result
+
     def evidence_record(self, ref: str) -> dict[str, Any] | None:
         try:
             row_id = int(ref.split(":", 1)[1])
@@ -197,12 +243,12 @@ class StateStore:
         unresolved.extend({"idempotency_key": key, "intent": value} for key, value in intents.items())
         return unresolved
 
-    def mutation_intent(self, task_id: str, action: str, idempotency_key: str) -> None:
-        self.event(task_id, "mutation_intent", {"action": action, "idempotency_key": idempotency_key, "status": "intent"})
+    def mutation_intent(self, task_id: str, action: str, idempotency_key: str, details: dict[str, Any] | None = None) -> None:
+        self.event(task_id, "mutation_intent", {"action": action, "idempotency_key": idempotency_key, "status": "intent", "details": details or {}})
 
     def mutation_ack(self, task_id: str, idempotency_key: str, status: str, result: dict[str, Any] | None = None) -> None:
-        if status not in {"acknowledged", "unknown"}:
-            raise ValueError("mutation status must be acknowledged or unknown")
+        if status not in {"acknowledged", "failed", "unknown"}:
+            raise ValueError("mutation status must be acknowledged, failed, or unknown")
         self.event(task_id, "mutation_result", {"idempotency_key": idempotency_key, "status": status, "result": result or {}})
 
     def evidence(self, task_id: str, kind: str, root: Path, payload: dict[str, Any], permitted: list[str] | None = None) -> str:

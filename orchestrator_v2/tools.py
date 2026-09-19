@@ -4,6 +4,7 @@ import os
 import signal
 import shutil
 import subprocess
+import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -77,6 +78,14 @@ class WorkspaceTools:
         p = self._file(rel)
         data = p.read_bytes()
         return data[:max_bytes].decode("utf-8", "replace")
+
+    def file_state(self, rel: str) -> dict:
+        """Bounded pre/post mutation fact; never copies a repository."""
+        p = self._file(rel, "write_file")
+        if not p.exists():
+            return {"path": rel, "exists": False, "bytes": 0, "sha256": None}
+        data = p.read_bytes()
+        return {"path": rel, "exists": True, "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()}
 
     def write_file(self, rel: str, content: str) -> dict:
         p = self._file(rel, "write_file"); p.parent.mkdir(parents=True, exist_ok=True)

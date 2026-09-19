@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import subprocess
 from pathlib import Path
 
@@ -10,15 +11,20 @@ from .decisions import DecisionProvider, DeterministicDecisionProvider
 from .context_gc import ContextBlock, ContextGC, ContextResult
 from .state import Criterion, Phase, StateStore, Task, TaskContract, file_manifest, new_task, source_hash
 from .tools import ToolError, ToolRegistry, WorkspaceTools
+from .cross_run import LoopMemory
+from .features import feature_vector
+from .symbols import SymbolIndex
+from .traces import TraceCollector
+from .usage import usage_from_response, usage_summary
 
 
 class Controller:
     def __init__(self, state_dir: Path, qwen=None, jev_mode: str = "off", decision_provider: DecisionProvider | None = None, decision_mode: str = "shadow"):
         if decision_mode not in {"shadow", "advisory"}: raise ValueError("decision_mode must be shadow or advisory")
-        self.state_dir = state_dir; self.store = StateStore(state_dir / "state.sqlite3"); self.qwen = qwen; self.jev = JevAdapter(jev_mode); self.ocr = OCRDelegation(); self.decision_provider = decision_provider or DeterministicDecisionProvider(); self.decision_mode = decision_mode
+        self.state_dir = state_dir; self.store = StateStore(state_dir / "state.sqlite3"); self.qwen = qwen; self.jev = JevAdapter(jev_mode); self.ocr = OCRDelegation(); self.decision_provider = decision_provider or DeterministicDecisionProvider(); self.decision_mode = decision_mode; self.loop_memory = LoopMemory(self.store); self.traces = TraceCollector(self.store)
 
     def intake(self, contract: TaskContract, workspace: Path, budget: int = 12) -> Task:
-        task = new_task(contract, workspace, budget); self.store.save_task(task); self.store.event(task.task_id, "intake", {"phase": task.phase.value, "source_hash": source_hash(workspace), "file_manifest": file_manifest(workspace, contract.permitted_files), "visual_required": contract.visual_required})
+        task = new_task(contract, workspace, budget); self.store.save_task(task); identity = self.loop_memory.identity(task, workspace); self.store.event(task.task_id, "intake", {"phase": task.phase.value, "goal": contract.goal, "criteria": [c.description for c in contract.criteria], "source_hash": source_hash(workspace), "file_manifest": file_manifest(workspace, contract.permitted_files), "visual_required": contract.visual_required, **identity})
         return task
 
     def _phase(self, task: Task, phase: Phase):
@@ -26,15 +32,20 @@ class Controller:
 
     def run(self, task: Task, review: bool = True) -> Task:
         root = Path(task.workspace); tools = WorkspaceTools(root, task.contract.permitted_files, task.contract.permitted_actions, task.contract.test_command)
+        identity = self.loop_memory.identity(task, root)
+        findings = self.loop_memory.find(task, root, hypothesis=task.contract.goal.strip(), action="bounded_investigation")
+        self.store.event(task.task_id, "cross_run_check", {**identity, "findings": [f.__dict__ for f in findings], "read_only_suppressed": self.loop_memory.should_suppress_read_only(task, findings)})
         review_ok = not review
         self._phase(task, Phase.INSPECT); self.store.evidence(task.task_id, "inspect", root, {"files": sorted(p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file() and ".git" not in p.parts)})
         self._phase(task, Phase.PLAN); self.store.evidence(task.task_id, "plan", root, {"criteria": [c.description for c in task.contract.criteria]}, task.contract.permitted_files)
-        self._decision_probe(task, root)
-        if self.qwen and task.budget_calls < task.budget_limit:
+        candidates = SymbolIndex(root, task.contract.permitted_files).render(task.contract.goal, limit=20)
+        self.store.evidence(task.task_id, "symbol_candidates", root, {"query": task.contract.goal, "candidates": candidates}, task.contract.permitted_files)
+        self._decision_probe(task, root, findings)
+        if self.qwen and task.budget_calls < task.budget_limit and not self._model_budget_exhausted(task):
             response = self.qwen.chat([{"role": "system", "content": "Return a concise implementation plan. Do not claim execution or completion."}, {"role": "user", "content": json.dumps({"goal": task.contract.goal, "criteria": [c.description for c in task.contract.criteria]})}], max_tokens=350)
-            task.budget_calls += 1; self.store.evidence(task.task_id, "qwen_plan", root, {"content": response.content, "usage": response.usage, "finish_reason": response.finish_reason, "elapsed": response.elapsed}, task.contract.permitted_files)
+            task.budget_calls += 1; self.store.evidence(task.task_id, "qwen_plan", root, {"content": response.content, "usage": response.usage, "finish_reason": response.finish_reason, "elapsed": response.elapsed}, task.contract.permitted_files); self._record_model_usage(task, "plan", response)
         self._phase(task, Phase.IMPLEMENT)
-        if self.qwen and task.budget_calls < task.budget_limit and "read_file" in task.contract.permitted_actions:
+        if self.qwen and task.budget_calls < task.budget_limit and "read_file" in task.contract.permitted_actions and not self._model_budget_exhausted(task):
             self._bounded_worker(task, root, tools)
         else:
             self.store.event(task.task_id, "implementation", {"mode": "deterministic", "note": "model worker skipped by budget or contract"})
@@ -93,19 +104,29 @@ class Controller:
         """Expose reversible context selection without changing the worker loop by default."""
         return ContextGC(self.state_dir, self.store, self.decision_provider, mode=mode).process(task.task_id, root, blocks, state)
 
-    def _decision_probe(self, task: Task, root: Path) -> None:
+    def _decision_probe(self, task: Task, root: Path, prior_findings=None) -> None:
         questions = {"next_read_only": {"type": "choice", "instructions": "Choose the next low-risk read-only supervisory direction. Do not authorize edits, retries, test skipping, scope changes, or completion.", "criteria": {"VERIFY": "Check a concrete missing fact or current test result.", "DIAGNOSE": "Classify an observed failure before choosing another check.", "REVIEW": "Inspect existing evidence or a bounded review finding.", "ESCALATE": "Evidence is insufficient and a human or explicit blocker is needed."}}}
         state = json.dumps({"goal": task.contract.goal, "phase": task.phase.value, "unresolved": task.unresolved, "required_criteria": [c.description for c in task.contract.criteria if c.required]}, sort_keys=True)
+        before = feature_vector(task, self.store, root, cross_run_findings=prior_findings or [])
+        if self.loop_memory.should_suppress_read_only(task, prior_findings or []):
+            self.store.event(task.task_id, "cross_run_suppressed", {"action": "bounded_investigation", "reason": "identical read-only state already investigated"})
+            self.traces.record(task.task_id, root, run_id=task.task_id, decision_family="next_read_only", phase=task.phase.value, before=before, deterministic_choice="SUPPRESS_REDUNDANT_READ_ONLY", provider_choice=None, after=feature_vector(task, self.store, root, cross_run_findings=prior_findings or []), hard_labels={"status": "SUPPRESSED_REDUNDANT", "source": "same state and prior event"})
+            return
         try:
             batch = self.decision_provider.decide(state, questions)
         except Exception as exc:
             self.store.event(task.task_id, "decision_unavailable", {"provider": self.decision_provider.name, "error": type(exc).__name__})
             return
+        self.store.event(task.task_id, "decision_usage", {"provider": batch.provider, "latency": batch.latency, "calls": 1, "decision_count": len(batch.decisions)})
         if not batch.decisions:
+            self.traces.record(task.task_id, root, run_id=task.task_id, decision_family="next_read_only", phase=task.phase.value, before=before, deterministic_choice="VERIFY", provider_choice=None, after=feature_vector(task, self.store, root, cross_run_findings=prior_findings or []))
             return
         payload = {"provider": batch.provider, "mode": self.decision_mode, "authority": "shadow-only", "latency": batch.latency, "decisions": [d.__dict__ for d in batch.decisions], "metadata": batch.metadata}
         ref = self.store.evidence(task.task_id, "decision", root, payload, task.contract.permitted_files)
         self.store.event(task.task_id, "decision_judgment", {"ref": ref, "provider": batch.provider, "mode": self.decision_mode, "authority": "shadow-only"})
+        selected = batch.decisions[0].selected
+        self.loop_memory.record_attempt(task, root, hypothesis=task.contract.goal.strip(), action="bounded_investigation", outcome="NEW_EVIDENCE" if selected else "NO_PROGRESS", evidence=[ref], new_evidence=bool(selected))
+        self.traces.record(task.task_id, root, run_id=task.task_id, decision_family="next_read_only", phase=task.phase.value, before=before, deterministic_choice="VERIFY", provider_choice=selected, after=feature_vector(task, self.store, root, cross_run_findings=prior_findings or []), hard_labels={"status": "NEW_EVIDENCE" if selected else "UNKNOWN", "source": "controller evidence" if selected else "not established"})
 
     def _bounded_worker(self, task: Task, root: Path, tools: WorkspaceTools) -> None:
         """Run a short native-tool loop; state and filesystem remain coordinator-owned."""
@@ -116,9 +137,13 @@ class Controller:
         registry = ToolRegistry()
         seen_actions: set[tuple[str, str, str]] = set()
         while task.budget_calls < task.budget_limit:
+            if self._model_budget_exhausted(task):
+                self.store.event(task.task_id, "budget_exhausted", {"phase": task.phase.value, "reason": "model seconds budget"})
+                return
             response = self.qwen.chat(messages, tools=registry.schemas(), max_tokens=1000)
             task.budget_calls += 1
             self.store.evidence(task.task_id, "qwen_worker", root, {"content": response.content, "usage": response.usage, "finish_reason": response.finish_reason, "elapsed": response.elapsed}, task.contract.permitted_files)
+            self._record_model_usage(task, "implement", response)
             if not response.tool_calls:
                 self.store.event(task.task_id, "worker_stopped", {"reason": "no_tool_call", "content": response.content[:2000]})
                 return
@@ -129,6 +154,7 @@ class Controller:
                 name = fn.get("name")
                 raw = fn.get("arguments", {})
                 args = {}
+                key = None
                 try:
                     args = json.loads(raw) if isinstance(raw, str) else raw
                     if not isinstance(args, dict): raise ValueError("arguments must be an object")
@@ -137,13 +163,30 @@ class Controller:
                         self.store.event(task.task_id, "no_progress", {"name": name, "reason": "same action and source version repeated"})
                         return
                     seen_actions.add(action_key)
+                    key = hashlib.sha256(json.dumps([task.task_id, name, args, source_hash(root, task.contract.permitted_files)], sort_keys=True, default=str).encode()).hexdigest()[:24]
+                    before_state = tools.file_state(args.get("path")) if name == "write_file" else None
+                    if name == "write_file":
+                        self.store.mutation_intent(task.task_id, name, key, {"path": args.get("path"), "before": before_state})
                     result = registry.dispatch(tools, name, args)
                     status = "ok"
+                    if name == "write_file":
+                        after_state = tools.file_state(args.get("path"))
+                        self.store.mutation_ack(task.task_id, key, "acknowledged", {"path": args.get("path"), "before": before_state, "after": after_state})
                 except (ToolError, ValueError, TypeError, json.JSONDecodeError) as exc:
                     result = {"error": str(exc)}; status = "rejected"
+                    if name == "write_file" and key:
+                        self.store.mutation_ack(task.task_id, key, "failed", {"error": str(exc)})
                 self.store.event(task.task_id, "tool_call", {"name": name, "status": status, "arguments": {k: ("<content>" if k == "content" else v) for k, v in (args.items() if isinstance(args, dict) else [])}})
                 call_id = call.get("id", f"tool-{task.budget_calls}")
                 messages.append({"role": "tool", "tool_call_id": call_id, "name": name or "unknown", "content": json.dumps(result)[:20_000]})
 
+    def _record_model_usage(self, task: Task, phase: str, response) -> None:
+        self.store.event(task.task_id, "usage", {"phase": phase, "model": getattr(self.qwen, "model", "unknown"), **usage_from_response(response.usage, elapsed=response.elapsed, output_chars=len(response.content or ""))})
+
+    def _model_budget_exhausted(self, task: Task) -> bool:
+        if task.max_model_seconds is None:
+            return False
+        return usage_summary(self.store, task.task_id)["model_seconds"] >= task.max_model_seconds
+
     def status(self, task_id: str) -> dict:
-        task = self.store.load_task(task_id); root = Path(task.workspace); return {"task_id": task.task_id, "phase": task.phase.value, "criteria": [c.__dict__ for c in task.contract.criteria], "unresolved": task.unresolved, "completion_facts": self.completion_gate(task, root), "events": self.store.events(task_id)}
+        task = self.store.load_task(task_id); root = Path(task.workspace); findings = self.loop_memory.find(task, root, hypothesis=task.contract.goal.strip(), action="bounded_investigation"); return {"task_id": task.task_id, "phase": task.phase.value, "criteria": [c.__dict__ for c in task.contract.criteria], "unresolved": task.unresolved, "completion_facts": self.completion_gate(task, root), "usage": usage_summary(self.store, task_id), "features": feature_vector(task, self.store, root, cross_run_findings=findings), "cross_run_findings": [f.__dict__ for f in findings], "events": self.store.events(task_id)}

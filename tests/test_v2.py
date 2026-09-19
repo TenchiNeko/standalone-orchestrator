@@ -11,6 +11,11 @@ from orchestrator_v2.context_gc import ContextBlock, ContextGC, HIDE_BUT_RECALLA
 from orchestrator_v2.decisions import Decision, DecisionBatch, DecisionProvider
 from orchestrator_v2.browser_router import BrowserCandidate, BrowserCandidateRouter
 from orchestrator_v2.routing import ModelRouter, ROUTINE_QWEN
+from orchestrator_v2.cross_run import LoopMemory
+from orchestrator_v2.features import FEATURE_SCHEMA, feature_vector, serialize_features
+from orchestrator_v2.symbols import SymbolIndex
+from orchestrator_v2.traces import TraceCollector
+from orchestrator_v2.usage import usage_from_response, usage_summary
 
 
 class FixedDecisionProvider(DecisionProvider):
@@ -133,6 +138,59 @@ class V2Tests(unittest.TestCase):
             contract = TaskContract("check", ["test_ok.py"], ["run_tests"], [Criterion("hint", "an advisory observation", required=False)])
             ctl = Controller(root / "state"); task = ctl.intake(contract, root, 1); result = ctl.run(task, review=False)
             self.assertEqual(result.phase, Phase.BLOCKED)
+
+    def test_cross_run_same_state_repeat_and_changed_state(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d); (root / "a.py").write_text("x=1\n")
+            contract = TaskContract("diagnose a", ["a.py"], ["read_file"], [Criterion("c", "inspect")])
+            store = StateStore(root / "state.sqlite3"); memory = LoopMemory(store)
+            first = new_task(contract, root); store.save_task(first); memory.record_attempt(first, root, hypothesis="diagnose a", action="read", outcome="REJECTED")
+            second = new_task(contract, root); store.save_task(second)
+            findings = memory.find(second, root, hypothesis="diagnose a", action="read")
+            self.assertTrue(any(f.kind == "SAME_TASK_SAME_STATE_REPEAT" for f in findings))
+            (root / "a.py").write_text("x=2\n")
+            changed = memory.find(second, root, hypothesis="diagnose a", action="read")
+            self.assertTrue(any(f.kind == "STATE_CHANGED_SINCE_PRIOR_ATTEMPT" and not f.relevant for f in changed))
+            unrelated = new_task(TaskContract("other", ["a.py"], ["read_file"], [Criterion("c", "inspect")]), root)
+            self.assertEqual(memory.find(unrelated, root, hypothesis="diagnose a", action="read"), [])
+
+    def test_structured_trace_export_has_no_prose_ground_truth(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d); (root / "a.py").write_text("x=1\n"); store = StateStore(root / "state.sqlite3")
+            contract = TaskContract("trace", ["a.py"], ["read_file"], [Criterion("c", "inspect")]); task = new_task(contract, root); store.save_task(task)
+            collector = TraceCollector(store)
+            before = {key: None for key in FEATURE_SCHEMA}; after = dict(before)
+            collector.record(task.task_id, root, run_id="run-1", decision_family="test", phase="inspect", before=before, deterministic_choice="VERIFY", provider_choice=None, after=after)
+            out = root / "traces.jsonl"; self.assertEqual(TraceCollector.export(store, out), 1)
+            line = out.read_text().strip(); self.assertIn('"labels":{"source":"not deterministically established","status":"UNKNOWN"}', line)
+            self.assertEqual(line, out.read_text().strip())
+
+    def test_symbol_index_is_deterministic_and_handles_invalid_python(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d); (root / "mod.py").write_text("import os\nclass Box:\n    def open(self, path):\n        return path\nasync def fetch(url):\n    return url\n"); (root / "bad.py").write_text("def broken(:\n")
+            index = SymbolIndex(root); symbols = index.build()
+            self.assertEqual([s.name for s in symbols], ["Box", "open", "fetch"])
+            candidates = index.candidates("open box", limit=2)
+            self.assertEqual(candidates[0].symbol.name, "Box")
+            self.assertEqual([(c.symbol.file, c.score) for c in candidates], [(c.symbol.file, c.score) for c in index.candidates("open box", limit=2)])
+
+    def test_usage_and_feature_schema_are_stable(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d); (root / "a.py").write_text("x=1\n"); store = StateStore(root / "state.sqlite3")
+            contract = TaskContract("usage", ["a.py"], ["read_file"], [Criterion("c", "inspect")]); task = new_task(contract, root); store.save_task(task)
+            usage = usage_from_response({"prompt_tokens": 12, "completion_tokens": 3, "prompt_tokens_details": {"cached_tokens": 4}}, elapsed=0.25)
+            store.event(task.task_id, "usage", usage); store.event(task.task_id, "tool_call", {"name": "read_file", "status": "ok"})
+            summary = usage_summary(store, task.task_id)
+            self.assertEqual((summary["qwen_requests"], summary["prompt_tokens"], summary["cached_prompt_tokens"], summary["reads"]), (1, 12, 4, 1))
+            features = feature_vector(task, store, root)
+            self.assertEqual(tuple(features), FEATURE_SCHEMA); self.assertEqual(serialize_features(features), serialize_features(features))
+
+    def test_mutation_evidence_requires_ack_and_preserves_before_after_hashes(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d); file = root / "a.py"; file.write_text("x=1\n"); store = StateStore(root / "state.sqlite3")
+            contract = TaskContract("write", ["a.py"], ["write_file"], [Criterion("c", "write")]); task = new_task(contract, root); store.save_task(task)
+            tools = WorkspaceTools(root, ["a.py"], ["write_file"]); before = tools.file_state("a.py"); store.mutation_intent(task.task_id, "write_file", "u1", {"before": before}); file.write_text("x=2\n"); after = tools.file_state("a.py"); self.assertTrue(store.unresolved_mutations(task.task_id)); store.mutation_ack(task.task_id, "u1", "acknowledged", {"before": before, "after": after}); self.assertEqual(store.unresolved_mutations(task.task_id), [])
+            store.mutation_intent(task.task_id, "write_file", "u2", {"before": after}); store.mutation_ack(task.task_id, "u2", "failed", {"error": "fixture"}); self.assertEqual(store.unresolved_mutations(task.task_id), [])
 
 
 if __name__ == "__main__": unittest.main()
