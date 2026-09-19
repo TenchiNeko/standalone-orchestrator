@@ -125,7 +125,7 @@ def run_qwen(rows):
     for row in rows:
         prompt = {
             "state": row["state"], "question": row["question"],
-            "candidates": row["candidates"],
+            "candidates": row["candidates"], "criteria": row["candidate_descriptions"],
             "instruction": "Return exactly one JSON object {\"choice\":\"CANDIDATE\"}; do not explain.",
         }
         response = adapter.chat([{"role": "system", "content": "Classify the supplied fixture. This is a bounded label task; do not use tools or reason aloud."}, {"role": "user", "content": json.dumps(prompt)}], max_tokens=80)

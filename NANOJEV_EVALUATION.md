@@ -13,7 +13,7 @@ evaluation.
 | conservative deterministic baseline | final (35) | 31.4% | 4 |
 | NanoJev | all (105) | 49.5% | 3 |
 | NanoJev | final (35) | 42.9% | 0 |
-| local Qwen one-shot classifier | final (35) | 80.0% | 0 |
+| local Qwen one-shot classifier | final (35) | 85.7% | 0 |
 
 NanoJev final per-family accuracy was operation 60%, progress 60%, failure
 source 0%, hypothesis 40%, next investigation 40%, review finding 60%, and
@@ -44,6 +44,10 @@ and one NanoJev decision. Both produced the correct edit, passed the frozen
 test, and had no unsafe duplicate action or human intervention. The added
 decision did not save a Qwen call or reduce work; its cost was the model
 startup/decision latency.
+
+The matched Qwen classifier baseline used 35 local requests with the same
+candidate descriptions: 85.7% accuracy, p50 1.72 s, p95 1.90 s, about 60 s
+total, zero unparsed responses, and no tracked dangerous errors.
 
 These are bounded repair results, not evidence of long-session convergence.
 No authority was granted to NanoJev, and no real mutation was routed by it.
