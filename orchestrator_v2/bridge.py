@@ -165,6 +165,17 @@ class SupervisorBridge:
         if kind == "supervisor":
             controller.store.event(task.task_id, "opencode_before", {"tool": tool, "kind": kind, "decision": "ALLOW"})
             return {"decision": "ALLOW"}
+        workdir = tool_args.get("workdir") or tool_args.get("cwd")
+        if workdir:
+            root = Path(task.workspace).resolve()
+            candidate = Path(str(workdir)).expanduser()
+            if not candidate.is_absolute():
+                candidate = root / candidate
+            try:
+                candidate.resolve().relative_to(root)
+            except ValueError:
+                controller.store.event(task.task_id, "opencode_before", {"tool": tool, "kind": kind, "decision": "BLOCK", "reason": "working directory is outside workspace"})
+                return {"decision": "BLOCK", "reason": "working directory is outside the task workspace"}
         if kind == "shell" or kind not in set(task.contract.permitted_actions) | READ_TOOLS | WRITE_TOOLS:
             controller.store.event(task.task_id, "opencode_before", {"tool": tool, "kind": kind, "decision": "BLOCK", "reason": "tool/action is not in the task contract"})
             return {"decision": "BLOCK", "reason": f"{tool} is not an allowed bounded v2 action"}

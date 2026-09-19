@@ -27,8 +27,9 @@ execute})` API. The project plugin exposes `orchestrator_start`,
 throws a hook error for deterministic BLOCK decisions; OpenCode reports the
 tool as failed and, in the disposable test, did not execute the blocked read.
 This is a host limitation, not a claim that every built-in tool can be
-perfectly intercepted. A fork would be required for a stronger universal
-pre-execution gate.
+perfectly intercepted. Bridge failures fail closed for edits and shell-like
+commands (reads remain available for recovery). A fork would be required for
+a stronger universal pre-execution gate.
 
 The plugin sees tool arguments/results and session IDs. When an OpenCode
 event includes numeric `part.tokens` fields, the bridge records those exact

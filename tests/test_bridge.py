@@ -68,6 +68,7 @@ class BridgeTests(unittest.TestCase):
             bridge, session = self._start(root)
             self.assertEqual(bridge.before({"session_id": session, "tool": "orchestrator_status", "args": {}})["decision"], "ALLOW")
             self.assertEqual(bridge.before({"session_id": session, "tool": "read", "args": {"filePath": str(root / "secret.txt")}})["decision"], "BLOCK")
+            self.assertEqual(bridge.before({"session_id": session, "tool": "bash", "args": {"command": "python3 -m unittest", "workdir": "/tmp"}})["decision"], "BLOCK")
             self.assertEqual(bridge.evidence({"session_id": session, "kind": "test", "payload": {"exit_code": 0}})["status"], "BLOCKED")
 
 

@@ -152,6 +152,9 @@ export const OrchestratorSupervisorPlugin: Plugin = async (ctx) => {
     "tool.execute.before": async (input, output) => {
       const result = await bridge.call({ op: "before", session_id: input.sessionID, call_id: input.callID, tool: input.tool, args: safeArgs(output.args) })
       if (result.decision === "BLOCK") throw new Error(`v2 supervisor blocked ${input.tool}: ${String(result.reason || "deterministic policy")}`)
+      // A bridge failure must not silently authorize a state-changing host
+      // tool. Reads remain usable for recovery; writes/commands fail closed.
+      if (result.status === "ERROR" && /^(edit|write|apply_patch|patch|bash|shell|terminal|run)$/i.test(input.tool)) throw new Error(`v2 supervisor unavailable for ${input.tool}; action was not authorized`)
     },
     "tool.execute.after": async (input, output) => {
       await bridge.call({ op: "after", session_id: input.sessionID, call_id: input.callID, tool: input.tool, args: safeArgs(input.args), output: { output: output.output, metadata: output.metadata }, ambiguous: output.metadata?.uncertain === true })
