@@ -11,16 +11,19 @@ evaluation.
 | Provider | Set | Accuracy | Dangerous errors |
 |---|---:|---:|---:|
 | conservative deterministic baseline | final (35) | 31.4% | 4 |
-| NanoJev | all (105) | 44.8% | 1 |
-| NanoJev | final (35) | 45.7% | 0 |
+| NanoJev | all (105) | 49.5% | 3 |
+| NanoJev | final (35) | 42.9% | 0 |
 | local Qwen one-shot classifier | final (35) | 80.0% | 0 |
 
-NanoJev final per-family accuracy was operation 80%, progress 20%, failure
-source 40%, hypothesis 40%, next investigation 40%, review finding 60%, and
+NanoJev final per-family accuracy was operation 60%, progress 60%, failure
+source 0%, hypothesis 40%, next investigation 40%, review finding 60%, and
 completion support 40%. The deterministic baseline was respectively 20%,
 40%, 40%, 20%, 20%, 40%, and 40%. NanoJev's final-set multiclass Brier score
-was 0.6103 and ECE 0.1897; these are reported as model distributions, not
-calibrated probabilities. Its all-set Brier/ECE were 0.6100/0.1180.
+was 0.6611 and ECE 0.1390; these are reported as model distributions, not
+calibrated probabilities. Its all-set Brier/ECE were 0.6086/0.0319. The
+all-set dangerous errors were three cases whose gold was `NEW_EVIDENCE` but
+NanoJev selected `NO_NEW_EVIDENCE`; the untouched final set had none of the
+four explicitly tracked dangerous mappings.
 
 ## Runtime
 
@@ -28,7 +31,7 @@ The local CPU provider loads one 2.385 GB float32 `best.safetensors`
 checkpoint (596,250,498 parameters) and uses no GPU memory. A persistent
 50-call run measured 16.2 s startup, p50 0.527 s, p95 0.548 s, batch-8
 0.466 s/question, about 5.36 GiB resident RAM, and about three CPU cores.
-The 105-case run measured p50 0.548 s, p95 0.699 s, 76.1 s inference time,
+The 105-case run measured p50 0.565 s, p95 0.778 s, 78.0 s inference time,
 and no swap activity.
 
 ## Real controller comparison
