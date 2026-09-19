@@ -8,6 +8,7 @@ cd /home/brandon/projects/standalone-orchestrator-v2
 .venv/bin/python -m unittest -v tests.test_v2
 QWEN_API_KEY_FILE=/home/brandon/.config/opencode/secrets/orca-q6.key .venv/bin/python -m orchestrator_v2.cli doctor
 PYTHONPATH=. QWEN_API_KEY_FILE=/home/brandon/.config/opencode/secrets/orca-q6.key .venv/bin/python -m orchestrator_v2.cli run --task examples/task.json --jev off
+PYTHONPATH=. QWEN_API_KEY_FILE=/home/brandon/.config/opencode/secrets/orca-q6.key .venv/bin/orchestrator-v2 run --task examples/repair-task.json --jev off
 ```
 
 The example writes only `.orchestrator-v2/state.sqlite3` and uses the existing local Qwen endpoint. For SSH-safe execution use `scripts/run-local.sh`; it starts one tmux session and never starts a model backend.
