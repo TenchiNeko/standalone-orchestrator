@@ -22,8 +22,9 @@ The project-local TypeSafe SDK is installed in `.venv`; no key is required for `
 OpenCode owns the session/model/tool loop while v2 records policy, evidence,
 mutation uncertainty, stale tests, traces, and deterministic finalization.
 The disposable proof configuration is under
-`integration/opencode-disposable/`; see `OPENCODE_INTEGRATION.md`. This is
-experimental until a complete repair converges through OpenCode. Standalone
-mode remains the conservative default and rollback path.
+`integration/opencode-disposable/`; see `OPENCODE_INTEGRATION.md`. The
+disposable repair and blocked-path proofs pass, but standalone mode remains
+the conservative default and rollback path because this host's compaction
+loop made the matched OpenCode run materially slower.
 
 Rollback/removal is scoped to this directory: `scripts/stop-local.sh` stops only the v2 tmux session; deleting `.orchestrator-v2/` removes v2 runtime state, while deleting this v2 directory removes the v2 installation. Historical source directories, the Qwen service, and global OpenCode configuration are not touched.
