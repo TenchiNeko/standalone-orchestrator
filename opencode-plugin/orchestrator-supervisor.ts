@@ -139,7 +139,7 @@ export const OrchestratorSupervisorPlugin: Plugin = async (ctx) => {
         },
       }),
       orchestrator_status: tool({
-        description: "Show compact deterministic v2 task state, evidence blockers, and usage.",
+        description: "Show compact deterministic v2 state, including workspace, immutable permitted_files/permitted_actions, exact test_command, visual requirement, budget, criteria status, phase, blockers, and usage.",
         args: {},
         async execute(_args, context) {
           return localResult(await bridge.call({ op: "summary", session_id: context.sessionID }))
