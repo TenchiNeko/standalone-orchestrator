@@ -19,12 +19,13 @@ user's home directory before OpenCode starts, so an accidental `cd ~` cannot
 trigger a broad source scan. An explicit human-only exception is available
 for unusual maintenance work with `V2_SUPERVISOR_ALLOW_BROAD_WORKSPACE=1`;
 the model cannot set this through `orchestrator_start`. Ordinary `opencode`
-and the global config remain unchanged.
+and unrelated global providers remain available unchanged.
 
 The launcher sets `V2_SUPERVISOR_REQUIRE_CONTRACT=1`, uses an isolated
 `~/.config/opencode-v2` host config by default, and loads only the project-local
 supervisor plugin plus the configured local Qwen provider. Ordinary `opencode`
-and the global config remain unchanged. Set `V2_OPENCODE_CONFIG_HOME` for a
+and unrelated global providers remain available unchanged. Set
+`V2_OPENCODE_CONFIG_HOME` for a
 disposable config. Roll back by using ordinary `opencode`, or remove/rename the
 reversible `~/.local/bin/opencode-v2` symlink; v2 SQLite state is retained.
 
