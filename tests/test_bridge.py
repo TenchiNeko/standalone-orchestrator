@@ -1,9 +1,13 @@
 import tempfile
+import time
+import json
 import unittest
 from unittest.mock import patch
 from pathlib import Path
 
 from orchestrator_v2.bridge import SupervisorBridge
+from orchestrator_v2.controller import Controller
+from orchestrator_v2.state import Criterion, TaskContract, source_hash
 
 
 class BridgeTests(unittest.TestCase):
@@ -141,6 +145,102 @@ class BridgeTests(unittest.TestCase):
             self.assertEqual(bridge.before({"session_id": session, "call_id": "w", "tool": "edit", "args": {"filePath": "hello.py"}})["decision"], "BLOCK")
             self.assertEqual(bridge.end({"session_id": session})["status"], "ENDED")
             self.assertEqual(bridge.health({"session_id": session, "workspace": str(root)})["session_associated"], False)
+
+    def test_intake_hash_is_scoped_to_permitted_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "project_source.py").write_text("x = 1\n")
+            unrelated = root / "huge-unrelated"
+            unrelated.mkdir()
+            for index in range(200):
+                (unrelated / f"file-{index}.txt").write_text("unrelated\n")
+            controller = Controller(root / "state")
+            contract = TaskContract("inspect", ["project_source.py"], ["read_file"], [Criterion("inspect", "inspect")])
+            calls = []
+
+            def spy(path, permitted=None):
+                calls.append((Path(path), permitted))
+                return source_hash(path, permitted)
+
+            with patch("orchestrator_v2.controller.source_hash", side_effect=spy):
+                started = time.perf_counter()
+                controller.intake(contract, root)
+                elapsed = time.perf_counter() - started
+            self.assertEqual(calls, [(root, ["project_source.py"])])
+            self.assertLess(elapsed, 1.0)
+
+    def test_strict_broad_workspace_is_rejected_without_intake_scan(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict("os.environ", {"V2_SUPERVISOR_REQUIRE_CONTRACT": "1"}, clear=False):
+            root = Path(directory)
+            bridge = SupervisorBridge(root / "state")
+            with patch("orchestrator_v2.bridge.Path.home", return_value=root):
+                result = bridge.start({"goal": "x", "permitted_files": ["source.py"], "permitted_actions": ["read_file"], "criteria": [{"key": "x", "description": "x"}]}, "broad", str(root))
+                health = bridge.health({"workspace": str(root)})
+            self.assertEqual(result["status"], "BLOCKED")
+            self.assertIn("refuses", result["reason"])
+            self.assertEqual(health["status"], "BLOCKED")
+
+    def test_audited_readonly_shell_is_allowed_but_not_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); (root / "hello.py").write_text("x = 1\n")
+            bridge, session = self._start(root)
+            for index, command in enumerate(("pwd", "ls -la", "ls hello.py", "stat hello.py", "wc -l hello.py")):
+                call_id = f"ro-{index}"
+                allowed = bridge.before({"session_id": session, "call_id": call_id, "tool": "bash", "args": {"command": command, "workdir": str(root)}})
+                self.assertEqual(allowed["decision"], "ALLOW", command)
+                bridge.after({"session_id": session, "call_id": call_id, "tool": "bash", "args": {"command": command}, "output": {"output": "inspection", "metadata": {"exit": 0}}})
+            controller, task = bridge._task(session)
+            self.assertEqual(controller.store.evidence_rows(task.task_id, "test"), [])
+
+    def test_shell_allowlist_rejects_mutation_composition_and_escape(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); (root / "hello.py").write_text("x = 1\n")
+            bridge, session = self._start(root)
+            blocked = ("echo test", "ls *", "ls /tmp", "rm hello.py", "python3 script.py", "ls hello.py && pwd", "git status", "git checkout -- hello.py", "git -c core.pager=cat status", "find . -exec cat {} \\")
+            for index, command in enumerate(blocked):
+                result = bridge.before({"session_id": session, "call_id": f"blocked-{index}", "tool": "bash", "args": {"command": command, "workdir": str(root)}})
+                self.assertEqual(result["decision"], "BLOCK", command)
+
+    def test_agentmemory_retrieval_is_advisory_and_writes_stay_blocked(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict("os.environ", {"V2_SUPERVISOR_REQUIRE_CONTRACT": "1"}, clear=False):
+            root = Path(directory); (root / "hello.py").write_text("x = 1\n")
+            bridge = SupervisorBridge(root / "state")
+            self.assertEqual(bridge.before({"session_id": "memory", "tool": "memory_recall", "args": {"query": "recent v2 decision"}})["decision"], "ALLOW")
+            self.assertEqual(bridge.before({"session_id": "memory", "tool": "memory_save", "args": {"content": "do not authorize"}})["decision"], "BLOCK")
+            _, session = self._start(root)
+            self.assertEqual(bridge.before({"session_id": session, "tool": "memory_smart_search", "args": {"query": "v2"}})["decision"], "ALLOW")
+            self.assertEqual(bridge.before({"session_id": session, "tool": "memory_compress_file", "args": {"path": "hello.py"}})["decision"], "BLOCK")
+
+    def test_status_exposes_active_contract_scope_without_expanding_it(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); (root / "src").mkdir(); (root / "src" / "a.py").write_text("x = 1\n")
+            (root / ".scratch").mkdir(); (root / ".scratch" / "helper.py").write_text("x = 2\n")
+            bridge = SupervisorBridge(root / "state")
+            started = bridge.start({
+                "goal": "update the source",
+                "permitted_files": ["src/a.py"],
+                "permitted_actions": ["read_file", "write_file"],
+                "criteria": [{"key": "done", "description": "source is updated"}],
+            }, "scope", str(root))
+            self.assertEqual(started["status"], "STARTED")
+            blocked = bridge.before({"session_id": "scope", "call_id": "bad", "tool": "edit", "args": {"filePath": ".scratch/helper.py"}})
+            self.assertEqual(blocked["decision"], "BLOCK")
+            status = bridge.summary({"session_id": "scope"})
+            self.assertEqual(status["permitted_files"], ["src/a.py"])
+            self.assertEqual(status["permitted_actions"], ["read_file", "write_file"])
+            self.assertEqual(status["test_command"], [])
+            compact = json.dumps({key: status[key] for key in ("task_id", "workspace", "phase", "permitted_files", "permitted_actions", "test_command", "visual_required", "budget_limit", "budget_calls", "remaining_budget", "criteria", "completion", "blockers", "counts")}, separators=(",", ":"))
+            self.assertLess(len(compact), 1800)
+            self.assertEqual(bridge.summary({"session_id": "scope"})["permitted_files"], ["src/a.py"])
+            self.assertEqual(bridge.end({"session_id": "scope"})["status"], "ENDED")
+            restarted = bridge.start({
+                "goal": "add helper",
+                "permitted_files": [".scratch/helper.py"],
+                "permitted_actions": ["read_file", "write_file"],
+                "criteria": [{"key": "done", "description": "helper is added"}],
+            }, "scope", str(root))
+            self.assertEqual(restarted["status"], "STARTED")
+            self.assertEqual(bridge.summary({"session_id": "scope"})["permitted_files"], [".scratch/helper.py"])
 
 
 if __name__ == "__main__":

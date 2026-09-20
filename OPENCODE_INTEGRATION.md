@@ -10,9 +10,16 @@ model server.
 
 ```bash
 cd /path/to/project
-opencode-v2
-opencode-v2 run "fix the failing tests"
+opencode-v2 --auto
+opencode-v2 --auto run "fix the failing tests"
 ```
+
+Run from the intended project directory. Strict mode refuses `/` and the
+user's home directory before OpenCode starts, so an accidental `cd ~` cannot
+trigger a broad source scan. An explicit human-only exception is available
+for unusual maintenance work with `V2_SUPERVISOR_ALLOW_BROAD_WORKSPACE=1`;
+the model cannot set this through `orchestrator_start`. Ordinary `opencode`
+and the global config remain unchanged.
 
 The launcher sets `V2_SUPERVISOR_REQUIRE_CONTRACT=1`, uses an isolated
 `~/.config/opencode-v2` host config by default, and loads only the project-local
@@ -51,6 +58,12 @@ list constrains mutations. `orchestrator_health`, `orchestrator_status`,
 `orchestrator_symbols`, `orchestrator_end`, and `orchestrator_cancel` are
 available as bounded local tools.
 
+`orchestrator_status` reports the active workspace, exact project-relative
+`permitted_files`, permitted actions, exact test argv, visual requirement,
+budget counters, criterion states, phase, blockers, and compact usage counts.
+It does not change the contract. If a path is rejected, inspect this scope
+once; end the task and start a new exact contract when the scope must change.
+
 Only an observed execution of the exact configured command with an observed
 exit status creates test evidence. `echo test`, compound commands, appended
 commands, model prose, and model-supplied exit codes never do. A successful
@@ -58,6 +71,24 @@ check is tied to the current permitted-file hash; a later edit makes it stale.
 Unknown mutation results block another write until authoritative readback via
 `orchestrator_evidence(kind="reconcile")` resolves them. Finalization returns
 `COMPLETE`, `INCOMPLETE`, `BLOCKED`, or `NEEDS_REVIEW`; it never trusts prose.
+
+After a contract exists, a small audited read-only shell subset may be used for
+inspection: `pwd`/`pwd -P`, `ls` with no more than one workspace path and the
+`-a`/`-l`/`-al`/`-la` flags, `stat`, `head`, `tail`, and `wc -l|-c|-w`. Git is
+intentionally not in this shell allowlist because repository configuration can
+invoke external helpers even for queries; use OpenCode's native repository
+tools instead. Each command is one argv command with no
+composition, globbing, redirection, config injection, or outside-workspace
+path. It is recorded as read-only inspection and can never satisfy a test
+criterion. General Bash, mutating Git commands, interpreters, and shell
+composition remain blocked. Exact AgentMemory retrieval tools (`memory_recall`,
+`memory_smart_search`, `memory_sessions`, `memory_lesson_recall`) are advisory
+context only; memory writes and unknown memory tools remain blocked.
+
+After an observed successful exact test, the plugin reuses the same
+deterministic finalizer and appends its bounded result to the test output. This
+helps a model that naturally stops after verification receive `COMPLETE` without
+adding a model call or granting any new authority.
 
 ## Bridge and state
 
@@ -68,8 +99,10 @@ python3 -u orchestrator_v2/bridge.py
 ```
 
 JSONL travels over stdin/stdout, with an 8-second request timeout, dead-child
-detection, bounded diagnostic stderr, restart on a later request, and fail-closed
-write/shell authorization. State is SQLite under a workspace hash. No cloud
+detection, operation-specific timeout diagnostics, bounded diagnostic stderr,
+restart on a later request, and fail-closed write/shell authorization. State is
+SQLite under a workspace hash. Intake hashes only the contract's permitted
+files, not the entire host workspace. No cloud
 service or second Qwen process is used. The verified host currently requires
 absolute imports of its installed plugin SDK; this is recorded as a portability
 limitation rather than changing the global installation.

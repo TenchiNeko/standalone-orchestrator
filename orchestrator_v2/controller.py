@@ -24,7 +24,11 @@ class Controller:
         self.state_dir = state_dir; self.store = StateStore(state_dir / "state.sqlite3"); self.qwen = qwen; self.jev = JevAdapter(jev_mode); self.ocr = OCRDelegation(); self.decision_provider = decision_provider or DeterministicDecisionProvider(); self.decision_mode = decision_mode; self.loop_memory = LoopMemory(self.store); self.traces = TraceCollector(self.store)
 
     def intake(self, contract: TaskContract, workspace: Path, budget: int = 12) -> Task:
-        task = new_task(contract, workspace, budget); self.store.save_task(task); identity = self.loop_memory.identity(task, workspace); self.store.event(task.task_id, "intake", {"phase": task.phase.value, "goal": contract.goal, "criteria": [c.description for c in contract.criteria], "source_hash": source_hash(workspace), "file_manifest": file_manifest(workspace, contract.permitted_files), "visual_required": contract.visual_required, **identity})
+        # Intake evidence is task-scoped.  Hashing an entire host workspace
+        # here made a contract for one file walk unrelated trees before the
+        # hosted bridge could respond.  LoopMemory already uses the same
+        # permitted-file scope, so keep the initial evidence consistent.
+        task = new_task(contract, workspace, budget); self.store.save_task(task); identity = self.loop_memory.identity(task, workspace); self.store.event(task.task_id, "intake", {"phase": task.phase.value, "goal": contract.goal, "criteria": [c.description for c in contract.criteria], "source_hash": source_hash(workspace, contract.permitted_files), "file_manifest": file_manifest(workspace, contract.permitted_files), "visual_required": contract.visual_required, **identity})
         return task
 
     def _phase(self, task: Task, phase: Phase):

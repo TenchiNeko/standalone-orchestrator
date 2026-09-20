@@ -35,9 +35,13 @@ FILE_KEYS = ("filePath", "file_path", "path", "file")
 # task workspace.  Keep discovery usable before a contract exists; unknown
 # tools remain fail-closed in strict mode.
 READ_TOOLS = {"read", "grep", "glob", "ls", "list", "skill", "webfetch", "question", "todoread", "todowrite"}
+# AgentMemory's local policy exposes these retrieval operations as read-only.
+# Writes, lesson saves, compression, exports, and other memory operations stay
+# blocked because the bridge cannot treat them as project evidence.
+MEMORY_READ_TOOLS = {"memory_recall", "memory_smart_search", "memory_sessions", "memory_lesson_recall"}
 WRITE_TOOLS = {"write", "edit", "apply_patch", "patch"}
 SHELL_TOOLS = {"bash", "shell", "terminal", "run"}
-SHELL_META = re.compile(r"[;&|<>$`(){}\n\r]")
+SHELL_META = re.compile(r"[;&|<>$`(){}*?\[\]\n\r]")
 BRIDGE_VERSION = "opencode-supervisor-v1"
 
 
@@ -84,6 +88,43 @@ def _exact_test_command(command: Any, configured: list[str] | None) -> bool:
     return bool(actual and expected and actual == expected)
 
 
+def _safe_read_path(root: Path, value: str, base: Path | None = None) -> bool:
+    """Resolve a shell read path and require it to remain inside root."""
+    try:
+        anchor = (base or root).resolve()
+        candidate = (anchor / value).resolve() if not Path(value).expanduser().is_absolute() else Path(value).expanduser().resolve()
+        candidate.relative_to(root.resolve())
+        return True
+    except (OSError, ValueError):
+        return False
+
+
+def _readonly_shell_command(command: Any, root: Path, base: Path | None = None) -> bool:
+    """Recognize a deliberately small, single-argv inspection subset.
+
+    This is intentionally an allowlist, not a shell-safety heuristic.  The
+    host still executes the command; v2 only authorizes these exact shapes.
+    """
+    args = _normal_command_args(command)
+    if not args:
+        return False
+    command_name, rest = args[0], args[1:]
+    if command_name == "pwd":
+        return rest in ([], ["-P"])
+    if command_name == "ls":
+        options = {"-a", "-l", "-la", "-al"}
+        if rest and rest[0] in options:
+            rest = rest[1:]
+        return len(rest) <= 1 and (not rest or _safe_read_path(root, rest[0], base))
+    if command_name == "stat":
+        return len(rest) == 1 and _safe_read_path(root, rest[0], base)
+    if command_name in {"head", "tail"}:
+        return len(rest) == 1 and _safe_read_path(root, rest[0], base)
+    if command_name == "wc":
+        return len(rest) == 2 and rest[0] in {"-l", "-c", "-w"} and _safe_read_path(root, rest[1], base)
+    return False
+
+
 def _command_from_args(args: dict[str, Any]) -> Any:
     return args.get("command") if "command" in args else args.get("cmd")
 
@@ -92,6 +133,8 @@ def _tool_kind(tool: str, args: dict[str, Any], task: Task | None = None) -> str
     name = str(tool or "").lower()
     if name.startswith("orchestrator_"):
         return "supervisor"
+    if name in MEMORY_READ_TOOLS:
+        return "memory_read"
     if name in READ_TOOLS:
         return "read_file"
     if name in WRITE_TOOLS:
@@ -99,6 +142,12 @@ def _tool_kind(tool: str, args: dict[str, Any], task: Task | None = None) -> str
     if name in SHELL_TOOLS:
         if task and _exact_test_command(_command_from_args(args), task.contract.test_command):
             return "run_tests"
+        if task:
+            root = Path(task.workspace).resolve()
+            workdir = Path(str(args.get("workdir") or args.get("cwd") or root)).expanduser()
+            base = workdir if workdir.is_absolute() else root / workdir
+            if _readonly_shell_command(_command_from_args(args), root, base):
+                return "shell_readonly"
         return "shell"
     return name or "unknown"
 
@@ -115,6 +164,7 @@ class SupervisorBridge:
     def __init__(self, state_root: Path | None = None):
         self.default_state_root = Path(state_root or os.environ.get("V2_SUPERVISOR_STATE", "~/.local/state/opencode/orchestrator-v2")).expanduser().resolve()
         self.require_contract = os.environ.get("V2_SUPERVISOR_REQUIRE_CONTRACT") == "1"
+        self.allow_broad_workspace = os.environ.get("V2_SUPERVISOR_ALLOW_BROAD_WORKSPACE") == "1"
         self.sessions: dict[str, str] = {}
         self.tasks: dict[str, Controller] = {}
         self.pending: dict[str, dict[str, Any]] = {}
@@ -187,6 +237,9 @@ class SupervisorBridge:
 
     def start(self, args: dict[str, Any], session_id: str, workspace: str) -> dict[str, Any]:
         root = Path(workspace).resolve()
+        broad_reason = self._broad_workspace_reason(root)
+        if broad_reason:
+            return {"status": "BLOCKED", "reason": broad_reason}
         existing = self._task(session_id=session_id)
         if existing:
             _, active = existing
@@ -230,12 +283,22 @@ class SupervisorBridge:
         controller.store.event(task.task_id, "opencode_session", {"session_id": session_id, "workspace": str(root), "host": "opencode"})
         return {"status": "STARTED", "task_id": task.task_id, "workspace": str(root), "phase": task.phase.value}
 
+    def _broad_workspace_reason(self, root: Path) -> str | None:
+        if not self.require_contract or self.allow_broad_workspace:
+            return None
+        home = Path.home().resolve()
+        if root == Path("/"):
+            return "strict supervision refuses / as a coding workspace; start from the intended project directory"
+        if root == home:
+            return f"strict supervision refuses {home} as a coding workspace; start from the intended project directory"
+        return None
+
     def before(self, args: dict[str, Any]) -> dict[str, Any]:
         found = self._task(args.get("session_id"), args.get("task_id"))
         if not found:
             tool = str(args.get("tool") or "")
             kind = _tool_kind(tool, args.get("args") if isinstance(args.get("args"), dict) else {})
-            if kind == "supervisor" or kind in {"read_file"} or tool.lower() in READ_TOOLS:
+            if kind == "supervisor" or kind in {"read_file", "memory_read"} or tool.lower() in READ_TOOLS:
                 return {"decision": "ALLOW", "reason": "read-only discovery is allowed before a contract"}
             if self.require_contract:
                 return {"decision": "BLOCK", "reason": "strict supervision requires orchestrator_start before mutations, tests, or shell commands"}
@@ -250,7 +313,7 @@ class SupervisorBridge:
         if kind == "supervisor":
             controller.store.event(task.task_id, "opencode_before", {"tool": tool, "kind": kind, "decision": "ALLOW"})
             return {"decision": "ALLOW"}
-        if task.phase == Phase.COMPLETE and kind != "read_file":
+        if task.phase == Phase.COMPLETE and kind not in {"read_file", "memory_read"}:
             controller.store.event(task.task_id, "opencode_before", {"tool": tool, "kind": kind, "decision": "BLOCK", "reason": "task is already COMPLETE"})
             return {"decision": "BLOCK", "reason": "task is COMPLETE; start a new contract before another test or mutation"}
         workdir = tool_args.get("workdir") or tool_args.get("cwd")
@@ -264,7 +327,17 @@ class SupervisorBridge:
             except ValueError:
                 controller.store.event(task.task_id, "opencode_before", {"tool": tool, "kind": kind, "decision": "BLOCK", "reason": "working directory is outside workspace"})
                 return {"decision": "BLOCK", "reason": "working directory is outside the task workspace"}
-        if kind == "shell" or kind not in set(task.contract.permitted_actions) | READ_TOOLS | WRITE_TOOLS:
+        root = Path(task.workspace).resolve()
+        if kind == "shell_readonly":
+            # Safe shell inspection uses the existing read_file contract
+            # action; it never becomes a mutation or test action.
+            base = Path(str(tool_args.get("workdir") or tool_args.get("cwd") or root)).expanduser()
+            if not base.is_absolute():
+                base = root / base
+            if not _readonly_shell_command(_command_from_args(tool_args), root, base) or "read_file" not in task.contract.permitted_actions:
+                controller.store.event(task.task_id, "opencode_before", {"tool": tool, "kind": kind, "decision": "BLOCK", "reason": "shell command is not an audited read-only inspection"})
+                return {"decision": "BLOCK", "reason": "shell command is not an audited read-only inspection"}
+        if kind == "shell" or kind not in set(task.contract.permitted_actions) | READ_TOOLS | WRITE_TOOLS | {"memory_read", "shell_readonly"}:
             controller.store.event(task.task_id, "opencode_before", {"tool": tool, "kind": kind, "decision": "BLOCK", "reason": "tool/action is not in the task contract"})
             return {"decision": "BLOCK", "reason": f"{tool} is not an allowed bounded v2 action"}
         if kind == "run_tests" and ("run_tests" not in task.contract.permitted_actions or not _exact_test_command(_command_from_args(tool_args), task.contract.test_command)):
@@ -282,7 +355,7 @@ class SupervisorBridge:
             return {"decision": "BLOCK", "reason": f"path is not permitted: {path}"}
         if kind == "write_file" and controller.store.unresolved_mutations(task.task_id):
             return {"decision": "BLOCK", "reason": "an earlier mutation outcome is unresolved; reconcile it before another write"}
-        state = source_hash(Path(task.workspace), task.contract.permitted_files)
+        state = source_hash(root, task.contract.permitted_files)
         fingerprint = _json_hash({"tool": tool, "kind": kind, "args": tool_args, "state": state})
         prior = [json.loads(row["payload"]) for row in controller.store.events(task.task_id) if row["kind"] == "opencode_before" and json.loads(row["payload"]).get("action_fingerprint") == fingerprint]
         duplicate = bool(prior)
@@ -323,7 +396,8 @@ class SupervisorBridge:
         if pending and pending["kind"] == "run_tests":
             command = _command_from_args(args.get("args", {}) if isinstance(args.get("args"), dict) else {})
             if _exact_test_command(command, task.contract.test_command) and exit_code is not None:
-                controller.store.evidence(task.task_id, "test", Path(task.workspace), {"command": command, "exit_code": exit_code, "timed_out": bool(metadata.get("timed_out")), "output_sha256": result["output_sha256"], "source": "opencode"}, task.contract.permitted_files)
+                ref = controller.store.evidence(task.task_id, "test", Path(task.workspace), {"command": command, "exit_code": exit_code, "timed_out": bool(metadata.get("timed_out")), "output_sha256": result["output_sha256"], "source": "opencode"}, task.contract.permitted_files)
+                result.update({"evidence": "recorded", "evidence_ref": ref})
             else:
                 result["evidence"] = "not_recorded: command or exit status was not authoritative"
         controller.store.event(task.task_id, "tool_call", {"name": pending["kind"] if pending else _tool_kind(str(args.get("tool") or ""), args.get("args") if isinstance(args.get("args"), dict) else {}), "status": status, "source": "opencode"})
@@ -449,7 +523,7 @@ class SupervisorBridge:
                 continue
             if row["kind"] == "tool_call":
                 name = payload.get("name")
-                if name == "read_file": counts["reads"] += 1
+                if name in {"read_file", "shell_readonly", "memory_read"}: counts["reads"] += 1
                 elif name == "write_file": counts["writes"] += 1
                 elif name == "run_tests": counts["tests"] += 1
             elif row["kind"] == "no_progress": counts["no_progress"] += 1
@@ -463,12 +537,38 @@ class SupervisorBridge:
             blockers.append("required criteria remain unverified")
             gate = {**gate, "allowed": False, "reason": "required criteria remain unverified", "pending": pending}
         blockers.extend(task.unresolved)
-        return {"status": "OK", "task_id": task.task_id, "phase": task.phase.value, "goal": goal, "criteria": [{"key": c.key, "status": c.status} for c in task.contract.criteria], "completion": {"allowed": gate.get("allowed"), "reason": gate.get("reason"), "pending": gate.get("pending", []), "unresolved_mutations": len(gate.get("unresolved_mutations", []))}, "blockers": list(dict.fromkeys(str(x) for x in blockers if x)), "counts": counts, "usage": usage, "strict_mode": self.require_contract}
+        remaining_budget = max(0, task.budget_limit - task.budget_calls)
+        return {
+            "status": "OK",
+            "task_id": task.task_id,
+            "workspace": str(Path(task.workspace).resolve()),
+            "phase": task.phase.value,
+            "goal": goal,
+            # This is the immutable active contract scope.  It is deliberately
+            # concise so the model can recover from a blocked path without
+            # exposing event history, hashes, or secrets.
+            "permitted_files": [Path(item).as_posix() for item in task.contract.permitted_files],
+            "permitted_actions": list(task.contract.permitted_actions),
+            "test_command": list(task.contract.test_command or []),
+            "visual_required": task.contract.visual_required,
+            "budget_limit": task.budget_limit,
+            "budget_calls": task.budget_calls,
+            "remaining_budget": remaining_budget,
+            "criteria": [{"key": c.key, "status": c.status} for c in task.contract.criteria],
+            "completion": {"allowed": gate.get("allowed"), "reason": gate.get("reason"), "pending": gate.get("pending", []), "unresolved_mutations": len(gate.get("unresolved_mutations", []))},
+            "blockers": list(dict.fromkeys(str(x) for x in blockers if x)),
+            "counts": counts,
+            "usage": usage,
+            "strict_mode": self.require_contract,
+        }
 
     def health(self, args: dict[str, Any]) -> dict[str, Any]:
         session_id = str(args.get("session_id") or "")
         found = self._task(session_id=session_id)
         workspace = str(Path(str(args.get("workspace") or (found[1].workspace if found else os.getcwd()))).resolve())
+        broad_reason = self._broad_workspace_reason(Path(workspace))
+        if broad_reason:
+            return {"status": "BLOCKED", "bridge_alive": True, "version": BRIDGE_VERSION, "session_associated": bool(found), "workspace": workspace, "state_db_reachable": False, "strict_mode": self.require_contract, "reason": broad_reason}
         digest = hashlib.sha256(workspace.encode()).hexdigest()[:16]
         state_dir = self.default_state_root / digest
         reachable = True

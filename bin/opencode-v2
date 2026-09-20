@@ -9,6 +9,19 @@ if [[ ! -x "$OPEN" ]]; then
   exit 127
 fi
 
+# A strict task must start in the intended project, not a filesystem or home
+# root.  This check is deliberately narrow and fail-closed; a human can make
+# an explicit process-level exception for an unusual broad-workspace task.
+WORKSPACE="$(pwd -P)"
+HOME_REAL="$(cd "${HOME:-/}" 2>/dev/null && pwd -P)"
+if [[ "${V2_SUPERVISOR_ALLOW_BROAD_WORKSPACE:-0}" != "1" && ( "$WORKSPACE" == "/" || "$WORKSPACE" == "$HOME_REAL" ) ]]; then
+  echo "opencode-v2: strict mode refuses to use $WORKSPACE as the coding workspace." >&2
+  echo "Start from the intended project directory, for example:" >&2
+  echo "  cd /home/brandon/popmart-bot" >&2
+  echo "  opencode-v2 --auto" >&2
+  exit 2
+fi
+
 export OPENCODE_CONFIG_CONTENT="$(python3 "$ROOT/scripts/build_opencode_config.py" "$@")"
 export V2_SUPERVISOR_REQUIRE_CONTRACT="1"
 export V2_SUPERVISOR_ISOLATE_PLUGINS="${V2_SUPERVISOR_ISOLATE_PLUGINS:-1}"
