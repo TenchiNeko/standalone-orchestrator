@@ -110,8 +110,9 @@ limitation rather than changing the global installation.
 ## Compaction and usage
 
 Only an active task receives a stable compact JSON fact summary (capped at 1800
-characters): task/phase/goal, criteria, evidence blockers, counts, and bounded
-usage. No event history or hidden evidence is injected. Token parts are forwarded
+characters): task/phase/goal, project-relative permitted files/actions, exact
+test argv, visual requirement, budget, criteria, evidence blockers, counts, and
+bounded usage. No event history or hidden evidence is injected. Token parts are forwarded
 with stable IDs where available and exact host fields are stored; the host does
 not expose a separate guaranteed usage API.
 
