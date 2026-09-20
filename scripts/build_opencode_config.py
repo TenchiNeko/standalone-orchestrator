@@ -30,7 +30,12 @@ def main() -> int:
             "apiKey": "{file:/home/brandon/.config/opencode/secrets/orca-q6.key}",
             "timeout": 900000,
         },
-        "models": {"orca27b-ultra-q6-mtp": {"name": "Qwen3.8-27B Ultra Q6"}},
+        "models": {
+            "orca27b-ultra-q6-mtp": {
+                "name": "Qwen3.8-27B Ultra Q6",
+                "limit": {"context": 32768, "input": 28000, "output": 2048},
+            }
+        },
     }
     config["provider"] = providers
     # A command-line -m/--model still wins in OpenCode; otherwise use the

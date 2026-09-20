@@ -22,10 +22,10 @@ if [[ "${V2_SUPERVISOR_ALLOW_BROAD_WORKSPACE:-0}" != "1" && ( "$WORKSPACE" == "/
   exit 2
 fi
 
-export OPENCODE_CONFIG_CONTENT="$(python3 "$ROOT/scripts/build_opencode_config.py" "$@")"
 export V2_SUPERVISOR_REQUIRE_CONTRACT="1"
 export V2_SUPERVISOR_ISOLATE_PLUGINS="${V2_SUPERVISOR_ISOLATE_PLUGINS:-1}"
 export V2_SUPERVISOR_PYTHON="${V2_SUPERVISOR_PYTHON:-$ROOT/.venv/bin/python}"
 export V2_SUPERVISOR_STATE="${V2_SUPERVISOR_STATE:-$HOME/.local/state/opencode/orchestrator-v2}"
+export OPENCODE_CONFIG_CONTENT="$(python3 "$ROOT/scripts/build_opencode_config.py" "$@")"
 export XDG_CONFIG_HOME="${V2_OPENCODE_CONFIG_HOME:-$HOME/.config/opencode-v2}"
 exec "$OPEN" "$@"

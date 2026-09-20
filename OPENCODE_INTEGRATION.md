@@ -28,6 +28,14 @@ and the global config remain unchanged. Set `V2_OPENCODE_CONFIG_HOME` for a
 disposable config. Roll back by using ordinary `opencode`, or remove/rename the
 reversible `~/.local/bin/opencode-v2` symlink; v2 SQLite state is retained.
 
+The promoted local Qwen backend has a **40960-token physical llama.cpp
+context** while the generated supervised OpenCode model definition pins the
+logical budget to `context=32768`, `input=28000`, and `output=2048`. This
+headroom is intentional: OpenCode compacts at its logical budget while
+transitional requests in the old 33--34K range can still reach the backend.
+The backend uses native q8_0-K/q5_1-V Flash Attention and the validated
+per-tensor CUDA0 overrides recorded in the shared workspace run.
+
 ## Verified host API
 
 Verified on OpenCode **1.18.31** and `@opencode-ai/plugin` **1.14.48**:
