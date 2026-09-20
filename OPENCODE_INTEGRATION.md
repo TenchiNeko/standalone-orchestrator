@@ -1,119 +1,94 @@
-# OpenCode hosted mode
+# OpenCode + v2 supervisor
 
-This project-local integration keeps OpenCode as the interactive host and
-uses the existing Python v2 core for policy, evidence, mutation state, and
-deterministic finalization. It does not replace the standalone CLI.
+The preferred interactive path is the installed `opencode-v2` launcher. OpenCode
+owns the session, model transport, UI, context, and normal tools; the existing
+Python v2 core owns contracts, policy, evidence, mutation reconciliation, stale
+tests, and deterministic finalization. It never starts a second agent loop or
+model server.
+
+## Run and rollback
+
+```bash
+cd /path/to/project
+opencode-v2
+opencode-v2 run "fix the failing tests"
+```
+
+The launcher sets `V2_SUPERVISOR_REQUIRE_CONTRACT=1`, uses an isolated
+`~/.config/opencode-v2` host config by default, and loads only the project-local
+supervisor plugin plus the configured local Qwen provider. Ordinary `opencode`
+and the global config remain unchanged. Set `V2_OPENCODE_CONFIG_HOME` for a
+disposable config. Roll back by using ordinary `opencode`, or remove/rename the
+reversible `~/.local/bin/opencode-v2` symlink; v2 SQLite state is retained.
 
 ## Verified host API
 
-The installed host is OpenCode **1.18.31** with
-`@opencode-ai/plugin` **1.14.48**. The plugin uses these installed hooks:
+Verified on OpenCode **1.18.31** and `@opencode-ai/plugin` **1.14.48**:
 
-- `tool.execute.before` — receives `tool`, `sessionID`, and `callID`; the
-  mutable `output.args` is inspected before execution.
-- `tool.execute.after` — receives the tool arguments and result metadata.
-- `event` — records bounded session/message lifecycle facts.
-- `experimental.chat.system.transform` — adds the short supervision
-  contract to the model system messages.
-- `experimental.session.compacting` — injects a compact v2 fact summary when
-  OpenCode compacts context.
+- `tool.execute.before` sees tool, session, call ID, and mutable arguments;
+- `tool.execute.after` sees arguments and result metadata;
+- `event` records bounded lifecycle and token-part facts;
+- `experimental.chat.system.transform` adds the short supervision contract;
+- `experimental.session.compacting` receives a bounded v2 fact summary;
+- `experimental.compaction.autocontinue` disables automatic continuation after
+  deterministic completion;
+- `tool({description,args,execute})` supplies custom tools.
 
-The custom-tool mechanism is the installed `tool({description, args,
-execute})` API. The project plugin exposes `orchestrator_start`,
-`orchestrator_status`, `orchestrator_evidence`, `orchestrator_finalize`, and
-`orchestrator_symbols`.
+The installed hook has no typed deny return and no trusted stop-generation API.
+A deterministic BLOCK throws before a built-in tool runs (proven in the
+disposable fixture); a fork would be needed for a stronger universal host gate.
+After v2 records `COMPLETE`, every later project mutation, shell command, or test
+is blocked until a new contract is started.
 
-`tool.execute.before` has no typed reject result in this host API. The plugin
-throws a hook error for deterministic BLOCK decisions; OpenCode reports the
-tool as failed and, in the disposable test, did not execute the blocked read.
-This is a host limitation, not a claim that every built-in tool can be
-perfectly intercepted. Bridge failures fail closed for edits and shell-like
-commands (reads remain available for recovery). A fork would be required for
-a stronger universal pre-execution gate.
+## Daily contract workflow
 
-The plugin sees tool arguments/results and session IDs. When an OpenCode
-event includes numeric `part.tokens` fields, the bridge records those exact
-values; there is no separate guaranteed typed token-usage hook. JSON event
-output can still be used for an external report. There is no plugin hook here
-that authoritatively declares a final assistant completion.
+Read-only discovery is allowed before a task exists. Before the first edit,
+write, shell command, or test, the model must call `orchestrator_start` with a
+non-empty goal, exact mutation files (never `*` in strict mode), permitted
+actions, a shell-free exact test argv, and a criterion that the test can prove.
+Reads may inspect tests and neighboring source inside the workspace; the file
+list constrains mutations. `orchestrator_health`, `orchestrator_status`,
+`orchestrator_symbols`, `orchestrator_end`, and `orchestrator_cancel` are
+available as bounded local tools.
+
+Only an observed execution of the exact configured command with an observed
+exit status creates test evidence. `echo test`, compound commands, appended
+commands, model prose, and model-supplied exit codes never do. A successful
+check is tied to the current permitted-file hash; a later edit makes it stale.
+Unknown mutation results block another write until authoritative readback via
+`orchestrator_evidence(kind="reconcile")` resolves them. Finalization returns
+`COMPLETE`, `INCOMPLETE`, `BLOCKED`, or `NEEDS_REVIEW`; it never trusts prose.
 
 ## Bridge and state
 
-The TypeScript plugin starts one persistent local child:
+The TypeScript adapter keeps one persistent local child:
 
 ```text
 python3 -u orchestrator_v2/bridge.py
 ```
 
-It uses JSONL over stdin/stdout, never a network listener. Each project is
-mapped to its own v2 SQLite state directory under
-`$V2_SUPERVISOR_STATE/<workspace-hash>/`. The bridge forwards calls to the
-existing `Controller`, `StateStore`, mutation journal, symbol index, and
-completion gate. No cloud service or second model is started.
+JSONL travels over stdin/stdout, with an 8-second request timeout, dead-child
+detection, bounded diagnostic stderr, restart on a later request, and fail-closed
+write/shell authorization. State is SQLite under a workspace hash. No cloud
+service or second Qwen process is used. The verified host currently requires
+absolute imports of its installed plugin SDK; this is recorded as a portability
+limitation rather than changing the global installation.
 
-The active OpenCode project directory (`ToolContext.directory`) is used as
-the workspace root. Absolute OpenCode file paths are normalized under that
-root before checking the contract.
+## Compaction and usage
 
-## Disposable configuration
+Only an active task receives a stable compact JSON fact summary (capped at 1800
+characters): task/phase/goal, criteria, evidence blockers, counts, and bounded
+usage. No event history or hidden evidence is injected. Token parts are forwarded
+with stable IDs where available and exact host fields are stored; the host does
+not expose a separate guaranteed usage API.
 
-The proof configuration is
-`integration/opencode-disposable/opencode.json`. It is not installed in the
-global OpenCode configuration. To run a disposable session without loading
-global plugins:
+## Standalone mode
 
-```bash
-export OPENCODE_DISABLE_DEFAULT_PLUGINS=1
-export OPENCODE_DISABLE_PROJECT_CONFIG=1
-export OPENCODE_CONFIG_CONTENT="$(python3 -c 'import json; print(json.dumps(json.load(open("integration/opencode-disposable/opencode.json")) ))')"
-export V2_SUPERVISOR_STATE=/tmp/orchestrator-v2-opencode-state
-/home/brandon/.opencode/bin/opencode run --format json --dir /path/to/fixture \
-  --model orca-q6/orca27b-ultra-q6-mtp 'bounded task prompt'
-```
-
-The config references the existing local Qwen key file through OpenCode's
-file-reference syntax; no key is copied into this repository.
-
-## Safe workflow
-
-1. Call `orchestrator_start` with a non-empty goal, permitted files/actions,
-   required criteria, and (when applicable) the exact test command.
-2. Use normal OpenCode reads/edits/tests. Before/after hooks record hashes,
-   outputs, and mutation acknowledgements in SQLite.
-3. If a mutation result is uncertain, the bridge records `unknown` and blocks
-   another write until `orchestrator_evidence(kind="reconcile", path=...)`
-   performs an authoritative readback. An unchanged hash is recorded as a
-   confirmed failed mutation; a changed hash is acknowledged as applied.
-4. Call `orchestrator_status` when state is unclear.
-5. Call `orchestrator_finalize` before claiming completion. A successful
-   check must match the latest permitted-file hash; edits make prior checks
-   stale. Required criteria, visual evidence, and unresolved mutations are
-   deterministic blockers.
-
-Standalone equivalents remain available:
+The standalone runner remains available for controlled experiments:
 
 ```bash
 python3 -m unittest discover -s tests -q
 PYTHONPATH=. .venv/bin/python -m orchestrator_v2.cli run --task examples/repair-task.json --jev off
 ```
 
-## Disable / rollback
-
-The integration is project-local. Remove the plugin path from the disposable
-config (or set `V2_SUPERVISOR_DISABLED=1`) to disable it. No global
-OpenCode configuration, model service, AgentMemory, OCR, or Flash fallback
-was changed. The bridge state can be retained for audit or removed only from
-the disposable state directory selected by `V2_SUPERVISOR_STATE`.
-
-## Known limits
-
-- OpenCode's typed hook cannot return a native deny object for arbitrary
-  built-in tools; the throwing before-hook is best effort and must remain
-  covered by fixture tests.
-- Token usage is not exposed to this plugin hook.
-- Session idle/end events are observable as generic events, not a trusted
-  completion signal; explicit `orchestrator_finalize` remains required.
-- Context compaction can receive a fact summary, but the plugin cannot take
-  ownership of OpenCode's compaction algorithm.
-- The current Qwen model can still loop or stop without finishing a task;
-  hosted mode records that outcome rather than treating it as completion.
+The plugin is optional and can be disabled with `V2_SUPERVISOR_DISABLED=1`.

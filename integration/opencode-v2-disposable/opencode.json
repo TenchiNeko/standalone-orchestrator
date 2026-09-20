@@ -1,0 +1,18 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": [],
+  "provider": {
+    "orca-q6": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Existing local Qwen (v2 disposable)",
+      "options": {
+        "baseURL": "http://127.0.0.1:18089/v1",
+        "apiKey": "{file:/home/brandon/.config/opencode/secrets/orca-q6.key}",
+        "timeout": 900000
+      },
+      "models": {"orca27b-ultra-q6-mtp": {"name": "Qwen3.8-27B Ultra Q6"}}
+    }
+  },
+  "model": "orca-q6/orca27b-ultra-q6-mtp",
+  "permission": {"edit": "allow", "bash": "allow", "read": "allow"}
+}

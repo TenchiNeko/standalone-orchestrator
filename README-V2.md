@@ -15,7 +15,7 @@ The example writes only `.orchestrator-v2/state.sqlite3` and uses the existing l
 
 The project-local TypeSafe SDK is installed in `.venv`; no key is required for `--jev off`. OCR remains delegation-only and is called only for deterministic file/rule selection. The implementation worker uses only native `read_file`, `write_file`, and coordinator-selected `run_tests`; tests are sandboxed with bubblewrap when available.
 
-## OpenCode hosted experiment
+## OpenCode hosted mode
 
 `opencode-plugin/orchestrator-supervisor.ts` and
 `orchestrator_v2/bridge.py` provide a project-local OpenCode 1.18.31 adapter.
@@ -23,8 +23,9 @@ OpenCode owns the session/model/tool loop while v2 records policy, evidence,
 mutation uncertainty, stale tests, traces, and deterministic finalization.
 The disposable proof configuration is under
 `integration/opencode-disposable/`; see `OPENCODE_INTEGRATION.md`. The
-disposable repair and blocked-path proofs pass, but standalone mode remains
-the conservative default and rollback path because this host's compaction
-loop made the matched OpenCode run materially slower.
+preferred interactive path is `opencode-v2`: OpenCode supplies the normal
+session/model/tool loop while the Python core supplies deterministic contracts,
+mutation/evidence tracking, stale-test invalidation, and finalization. Standalone
+mode remains available for controlled experiments and as the fallback path.
 
 Rollback/removal is scoped to this directory: `scripts/stop-local.sh` stops only the v2 tmux session; deleting `.orchestrator-v2/` removes v2 runtime state, while deleting this v2 directory removes the v2 installation. Historical source directories, the Qwen service, and global OpenCode configuration are not touched.

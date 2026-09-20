@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SELF="$(readlink -f "${BASH_SOURCE[0]}")"
+ROOT="$(cd "$(dirname "$SELF")/.." && pwd)"
+OPEN="${OPENCODE_BIN:-/home/brandon/.opencode/bin/opencode}"
+if [[ ! -x "$OPEN" ]]; then
+  echo "opencode-v2: OpenCode binary not found: $OPEN" >&2
+  exit 127
+fi
+
+export OPENCODE_CONFIG_CONTENT="$(python3 "$ROOT/scripts/build_opencode_config.py" "$@")"
+export V2_SUPERVISOR_REQUIRE_CONTRACT="1"
+export V2_SUPERVISOR_ISOLATE_PLUGINS="${V2_SUPERVISOR_ISOLATE_PLUGINS:-1}"
+export V2_SUPERVISOR_PYTHON="${V2_SUPERVISOR_PYTHON:-$ROOT/.venv/bin/python}"
+export V2_SUPERVISOR_STATE="${V2_SUPERVISOR_STATE:-$HOME/.local/state/opencode/orchestrator-v2}"
+export XDG_CONFIG_HOME="${V2_OPENCODE_CONFIG_HOME:-$HOME/.config/opencode-v2}"
+exec "$OPEN" "$@"
