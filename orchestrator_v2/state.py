@@ -228,6 +228,7 @@ class StateStore:
         with self._db() as db:
             rows = db.execute("SELECT kind, payload FROM events WHERE task_id=? AND kind IN ('mutation_intent','mutation_result') ORDER BY id", (task_id,)).fetchall()
         intents: dict[str, dict[str, Any]] = {}
+        latest: dict[str, dict[str, Any]] = {}
         for row in rows:
             try:
                 payload = json.loads(row["payload"])
@@ -237,10 +238,11 @@ class StateStore:
             if row["kind"] == "mutation_intent" and key:
                 intents[key] = payload
             elif row["kind"] == "mutation_result" and key:
-                if payload.get("status") == "unknown":
-                    unresolved.append({"idempotency_key": key, "intent": intents.get(key, {}), "result": payload})
-                intents.pop(key, None)
-        unresolved.extend({"idempotency_key": key, "intent": value} for key, value in intents.items())
+                latest[key] = payload
+        for key, intent in intents.items():
+            result = latest.get(key)
+            if result is None or result.get("status") == "unknown":
+                unresolved.append({"idempotency_key": key, "intent": intent, "result": result} if result else {"idempotency_key": key, "intent": intent})
         return unresolved
 
     def mutation_intent(self, task_id: str, action: str, idempotency_key: str, details: dict[str, Any] | None = None) -> None:
