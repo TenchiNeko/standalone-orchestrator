@@ -250,7 +250,7 @@ class BridgeTests(unittest.TestCase):
             (root / "test_app.py").write_text("assert True\n")
             bridge = SupervisorBridge(root / "state")
             self.assertEqual(bridge.before({"session_id": "light", "tool": "read", "args": {"filePath": "config.yaml"}})["decision"], "ALLOW")
-            started = bridge.start({"goal": "repair app", "criteria": [{"key": "tests", "description": "verification passes"}]}, "light", str(root))
+            started = bridge.start({"goal": "repair app", "permitted_files": ["app.py"], "criteria": [{"key": "tests", "description": "verification passes"}]}, "light", str(root))
             self.assertEqual(started["status"], "STARTED")
             for call_id, path in (("write", ".scratch/helper.py"), ("test-write", "test_app.py")):
                 self.assertEqual(bridge.before({"session_id": "light", "call_id": call_id, "tool": "edit", "args": {"filePath": path}})["decision"], "ALLOW")
@@ -260,6 +260,7 @@ class BridgeTests(unittest.TestCase):
             self.assertEqual(summary["scope_mode"], "dynamic")
             self.assertIn(".scratch/helper.py", summary["scope_expansions"])
             self.assertIn("test_app.py", summary["scope_expansions"])
+            self.assertTrue(summary["drift_warnings"])
 
     def test_light_normal_shell_git_and_observed_verification(self):
         with tempfile.TemporaryDirectory() as directory, patch.dict("os.environ", {"V2_POLICY_MODE": "light", "V2_SUPERVISOR_REQUIRE_CONTRACT": "0"}, clear=False):

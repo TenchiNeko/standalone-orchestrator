@@ -217,11 +217,17 @@ class SupervisorBridge:
         if "*" not in task.contract.permitted_files:
             return rel
         if rel not in task.scope_files:
+            advisory = None
+            if task.scope_files:
+                advisory = "new path is outside the initial task hint; confirm its relationship to the objective"
             task.scope_files.append(rel)
             found = self._task(task_id=task.task_id)
             controller = found[0] if found else self._controller(root)
             controller.store.save_task(task)
-            controller.store.event(task.task_id, "scope_expanded", {"path": rel, "reason": reason, "mode": "light"})
+            payload = {"path": rel, "reason": reason, "mode": "light"}
+            if advisory:
+                payload["advisory"] = advisory
+            controller.store.event(task.task_id, "scope_expanded", payload)
         return rel
 
     @staticmethod
@@ -640,6 +646,7 @@ class SupervisorBridge:
         goal = task.contract.goal
         loop_warnings: list[dict[str, Any]] = []
         scope_expansions: list[str] = []
+        drift_warnings: list[dict[str, Any]] = []
         for row in events:
             try:
                 payload = json.loads(row["payload"])
@@ -657,6 +664,8 @@ class SupervisorBridge:
             elif row["kind"] == "intake": goal = payload.get("goal", goal)
             elif row["kind"] == "scope_expanded" and payload.get("path"):
                 scope_expansions.append(str(payload["path"]))
+                if payload.get("advisory"):
+                    drift_warnings.append({"path": payload["path"], "warning": payload["advisory"]})
             elif row["kind"] == "opencode_after" and payload.get("loop_warning"):
                 loop_warnings.append({"stage": "nudge", "warning": payload["loop_warning"]})
         blockers = []
@@ -667,6 +676,9 @@ class SupervisorBridge:
             gate = {**gate, "allowed": False, "reason": "required criteria remain unverified", "pending": pending}
         blockers.extend(task.unresolved)
         remaining_budget = max(0, task.budget_limit - task.budget_calls)
+        budget_warning = []
+        if self.light_mode and remaining_budget <= max(3, task.budget_limit // 8):
+            budget_warning.append("light supervisor budget is nearing exhaustion; summarize progress before another retry")
         return {
             "status": "OK",
             "task_id": task.task_id,
@@ -678,6 +690,7 @@ class SupervisorBridge:
             "permitted_files": [Path(item).as_posix() for item in (self._scope(task) or [])],
             "scope_mode": "dynamic" if self.light_mode else "immutable",
             "scope_expansions": sorted(dict.fromkeys(scope_expansions))[-100:],
+            "drift_warnings": drift_warnings[-5:],
             "permitted_actions": list(task.contract.permitted_actions),
             "test_command": list(task.contract.test_command or []),
             "visual_required": task.contract.visual_required,
@@ -689,6 +702,7 @@ class SupervisorBridge:
             "blockers": list(dict.fromkeys(str(x) for x in blockers if x)),
             "counts": counts,
             "loop_warnings": loop_warnings[-5:],
+            "warnings": budget_warning,
             "usage": usage,
             "strict_mode": self.require_contract,
             "policy_mode": self.policy_mode,
