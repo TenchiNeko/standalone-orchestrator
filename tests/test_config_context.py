@@ -19,14 +19,20 @@ class ConfigContextTests(unittest.TestCase):
             env.update({"OPENCODE_USER_CONFIG": str(path), "V2_POLICY_MODE": "light", "V2_SUPERVISOR_ISOLATE_PLUGINS": "1", **env_overrides})
             return json.loads(subprocess.check_output(["python3", str(BUILDER)], env=env, text=True))
 
-    def test_light_keeps_memory_capture_but_omits_prompt_heavy_plugins(self):
+    def test_light_uses_only_supervisor_and_bounded_memory_transport(self):
         config = {
             "plugin": ["@dietrichgebert/ponytail@4.10.0", "superpowers@git+https://example.invalid/superpowers", "/home/brandon/.config/opencode/plugins/agentmemory-capture.ts"],
             "mcp": {"agentmemory": {"type": "local", "command": ["npx", "-y", "@agentmemory/mcp"], "enabled": True}},
         }
         built = self._build(config)
-        self.assertEqual(built["plugin"], ["/home/brandon/.config/opencode/plugins/agentmemory-capture.ts", str(ROOT / "opencode-plugin" / "orchestrator-supervisor.ts")])
-        self.assertEqual(built["mcp"]["agentmemory"]["command"], ["node", str(ROOT / "scripts" / "agentmemory-mcp-filter.mjs")])
+        self.assertEqual(built["plugin"], [str(ROOT / "opencode-plugin" / "orchestrator-supervisor.ts")])
+        memory = built["mcp"]["agentmemory"]
+        self.assertEqual(memory["command"], ["node", str(ROOT / "scripts" / "agentmemory-mcp-filter.mjs")])
+        self.assertEqual(json.loads(memory["environment"]["V2_AGENTMEMORY_MCP_COMMAND"]), ["npx", "-y", "@agentmemory/mcp"])
+        self.assertEqual(json.loads(memory["environment"]["V2_AGENTMEMORY_ALLOWED_TOOLS"]), [
+            "memory_smart_search", "memory_recall", "memory_save", "memory_lesson_recall", "memory_lesson_save",
+        ])
+        self.assertEqual(built["skills"]["paths"], [str(ROOT / "skills")])
 
     def test_strict_isolation_remains_plugin_free_except_supervisor(self):
         config = {"plugin": ["@dietrichgebert/ponytail@4.10.0", "/home/brandon/.config/opencode/plugins/agentmemory-capture.ts"]}

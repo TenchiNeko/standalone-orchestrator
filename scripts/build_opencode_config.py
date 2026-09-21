@@ -9,7 +9,13 @@ from pathlib import Path
 
 
 DEFAULT_COMPACTION_RESERVED = 4_000
-AGENTMEMORY_PLUGIN = "/home/brandon/.config/opencode/plugins/agentmemory-capture.ts"
+LEAN_MEMORY_TOOLS = (
+    "memory_smart_search",
+    "memory_recall",
+    "memory_save",
+    "memory_lesson_recall",
+    "memory_lesson_save",
+)
 
 
 def compaction_reserved() -> int:
@@ -29,13 +35,12 @@ def main() -> int:
     config_path = Path(os.environ.get("OPENCODE_USER_CONFIG", "~/.config/opencode/opencode.json")).expanduser()
     config = json.loads(config_path.read_text()) if config_path.exists() else {}
     policy_mode = os.environ.get("V2_POLICY_MODE", "strict").strip().lower() or "strict"
-    # OpenCode also merges its XDG config.  Light mode keeps the useful
-    # AgentMemory capture hook, but excludes prompt-heavy global agents whose
-    # instructions were measured to double the local model's system payload.
-    # Strict mode preserves the old all-or-nothing isolation switch.
+    # OpenCode also merges its XDG config. Light mode keeps the supervisor and
+    # bounded memory MCP surface, while excluding global bootstrap hooks whose
+    # instructions/context are not needed on every request.
     configured_plugins = list(config.get("plugin") or [])
     if os.environ.get("V2_SUPERVISOR_ISOLATE_PLUGINS") == "1":
-        plugins = [item for item in configured_plugins if item == AGENTMEMORY_PLUGIN] if policy_mode == "light" else []
+        plugins = []
     else:
         plugins = configured_plugins
     plugin = str(root / "opencode-plugin" / "orchestrator-supervisor.ts")
@@ -45,14 +50,29 @@ def main() -> int:
     if policy_mode == "light":
         mcp = dict(config.get("mcp") or {})
         memory = mcp.get("agentmemory")
-        if isinstance(memory, dict) and memory.get("enabled", True):
-            # AgentMemory's remote server exposes 54 tools.  Keep memory
-            # retrieval/save/consolidation available through a local stdio
-            # filter while avoiding that entire schema on every request.
+        if isinstance(memory, dict) and memory.get("enabled", True) and memory.get("type", "local") == "local":
+            command = memory.get("command")
+            if not isinstance(command, list) or not command or not all(isinstance(item, str) for item in command):
+                raise SystemExit("light AgentMemory MCP requires the configured local command argv")
+            # OpenCode 1.18.31 has no native MCP per-tool visibility field:
+            # permission rules deny calls but do not remove schemas. Keep the
+            # configured transport/argv/cwd/env and filter only tools/list.
             memory = dict(memory)
             memory["command"] = ["node", str(root / "scripts" / "agentmemory-mcp-filter.mjs")]
+            environment = dict(memory.get("environment") or {})
+            environment["V2_AGENTMEMORY_MCP_COMMAND"] = json.dumps(command, separators=(",", ":"))
+            environment["V2_AGENTMEMORY_ALLOWED_TOOLS"] = json.dumps(LEAN_MEMORY_TOOLS, separators=(",", ":"))
+            memory["environment"] = environment
             mcp["agentmemory"] = memory
             config["mcp"] = mcp
+    configured_skills = config.get("skills")
+    skills = dict(configured_skills) if isinstance(configured_skills, dict) else {}
+    paths = list(skills.get("paths") or [])
+    lean_skills = str(root / "skills")
+    if lean_skills not in paths:
+        paths.append(lean_skills)
+    skills["paths"] = paths
+    config["skills"] = skills
     providers = dict(config.get("provider") or {})
     providers["orca-q6"] = {
         "npm": "@ai-sdk/openai-compatible",

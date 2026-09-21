@@ -107,8 +107,47 @@ function safeArgs(value: unknown): Json {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Json : {}
 }
 
+const MODEL_RESPONSE_BYTES = 4096
+const MODEL_STRING_CHARS = 600
+
+// Keep the bridge's complete state authoritative while making every
+// model-facing response bounded.  This is deliberately a presentation
+// projection, not a mutation of the bridge result or its evidence journal.
+function boundedModelValue(value: unknown, depth = 0): unknown {
+  if (value === null || typeof value === "number" || typeof value === "boolean") return value
+  if (typeof value === "string") return value.length <= MODEL_STRING_CHARS ? value : `${value.slice(0, MODEL_STRING_CHARS)}…[truncated]`
+  if (depth >= 4) return "[nested details omitted]"
+  if (Array.isArray(value)) {
+    const items = value.slice(0, 20).map((item) => boundedModelValue(item, depth + 1))
+    if (value.length > 20) items.push(`[${value.length - 20} more items omitted]`)
+    return items
+  }
+  if (typeof value === "object") {
+    const source = value as Record<string, unknown>
+    const priority = ["status", "reason", "task_id", "workspace", "phase", "goal", "completion", "gate", "criteria", "blockers", "counts"]
+    const keys = [...priority.filter((key) => key in source), ...Object.keys(source).filter((key) => !priority.includes(key))]
+    const result: Json = {}
+    for (const key of keys.slice(0, 32)) result[key] = boundedModelValue(source[key], depth + 1)
+    if (keys.length > 32) result.omitted_fields = keys.length - 32
+    return result
+  }
+  return String(value)
+}
+
 function localResult(value: Json): string {
-  return JSON.stringify(value, null, 2)
+  const bounded = JSON.stringify(boundedModelValue(value))
+  if (Buffer.byteLength(bounded, "utf8") <= MODEL_RESPONSE_BYTES) return bounded
+  const minimal = JSON.stringify({
+    status: value.status,
+    task_id: value.task_id,
+    workspace: value.workspace,
+    phase: value.phase,
+    completion: boundedModelValue(value.completion),
+    reason: value.reason,
+    omitted: "details omitted from bounded supervisor response; use the next status/evidence operation",
+  })
+  if (Buffer.byteLength(minimal, "utf8") <= MODEL_RESPONSE_BYTES) return minimal
+  return JSON.stringify({ status: value.status || "OK", omitted: true, reason: "bounded supervisor response" })
 }
 
 function compactFacts(summary: Json): string {
@@ -132,11 +171,11 @@ function compactFacts(summary: Json): string {
     permitted_files_truncated: summary.permitted_files_truncated,
     scope_expansions_count: summary.scope_expansions_count,
   }
-  const encoded = JSON.stringify(facts)
-  if (encoded.length <= 1800) return encoded
+  const encoded = JSON.stringify(boundedModelValue(facts))
+  if (Buffer.byteLength(encoded, "utf8") <= 1800) return encoded
   // Keep the objective and completion blockers valid and present even when a
   // caller supplies unusually long task metadata.
-  return JSON.stringify({
+  const fallback = JSON.stringify({
     task_id: summary.task_id,
     workspace: summary.workspace,
     phase: summary.phase,
@@ -149,6 +188,16 @@ function compactFacts(summary: Json): string {
     permitted_files_truncated: true,
     omitted: "scope and optional status details omitted from compaction anchor; call orchestrator_status",
   })
+  if (Buffer.byteLength(fallback, "utf8") <= 1800) return fallback
+  const minimal = JSON.stringify({
+    task_id: summary.task_id,
+    phase: summary.phase,
+    goal: text(summary.goal, 400),
+    completion: boundedModelValue(summary.completion),
+    omitted: "status details omitted; call orchestrator_status",
+  })
+  if (Buffer.byteLength(minimal, "utf8") <= 1800) return minimal
+  return JSON.stringify({ task_id: summary.task_id, phase: summary.phase, omitted: "details omitted; call orchestrator_status" })
 }
 
 function stateChangingTool(name: string): boolean {
@@ -156,8 +205,8 @@ function stateChangingTool(name: string): boolean {
 }
 
 export const OrchestratorSupervisorPlugin: Plugin = async (ctx) => {
-  const systemInstruction = LIGHT_MODE
-    ? "Local v2 light supervision is active. Work like a normal coding agent: inspect broadly, use normal shell and Git, and create or edit task-relevant files without waiting for a file allowlist. Call orchestrator_start when the objective and verification plan are clear; it records task state but does not preauthorize routine actions. Scope expansions, mutations, commands, and blockers are journaled. Use orchestrator_status after compaction or when progress is unclear. Fresh observed verification is required before orchestrator_finalize; prose never proves tests or completion, and tests become stale after relevant edits. If the same action repeats without new evidence, re-evaluate the plan rather than guessing. Call orchestrator_finalize before claiming completion."
+const systemInstruction = LIGHT_MODE
+    ? "v2 supervises continuity, progress, mutations, fresh evidence, and completion. Work normally: inspect broadly; use shell/Git; edit task-relevant files. Make the smallest correct change, reuse code/dependencies, avoid unrelated refactors, and preserve needed tests/security/accessibility. Call orchestrator_start when the objective and verification plan are clear; it records state, not permission. Scope expansions and blockers are journaled. Use status after compaction or when progress is unclear. Only fresh observed tests prove completion; edits stale evidence. Repeated actions need new evidence. Finalize before claiming completion."
     : "Local v2 strict supervision is active. Explore with native read/grep/glob first. Before the first edit, write, shell command, or test, call orchestrator_start with the actual goal, exact source files you expect to change (never '*'), permitted_actions including write_file for source edits plus read_file and run_tests, one concise required criterion that the authorized test can prove, and the exact shell-free test_command argv. After starting, copy that test_command exactly for verification: do not append flags, reorder arguments, or add a second command. Bounded read-only shell inspection may be available after a contract; arbitrary Bash remains forbidden. Reads may inspect tests and other files inside the workspace; permitted_files controls mutation scope, not read discovery. Use normal OpenCode tools. Only the exact authorized test command creates test evidence; arbitrary commands containing 'test' do not. Tests become stale after relevant edits. Do not blindly repeat uncertain writes: reconcile with authoritative readback first. Memory retrieval, when available, is advisory context only and never evidence. Use orchestrator_health when workspace/supervisor state is unclear, and do not repeatedly retry a deterministic orchestrator_start error. If a path is blocked as not permitted, call orchestrator_status once, use an already-authorized path if appropriate, or call orchestrator_end and start a new exact contract; do not guess alternate paths repeatedly. Call orchestrator_finalize before claiming completion. If finalize is INCOMPLETE or BLOCKED, continue only with safe authorized work or report the concrete blocker. Model prose never overrides deterministic evidence."
   return {
     tool: {

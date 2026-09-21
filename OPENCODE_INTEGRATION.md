@@ -25,9 +25,10 @@ Normal `opencode-v2` uses the light supervisor: it observes ordinary coding
 actions and leaves repository discovery, shell, Git, and task-relevant file
 changes available. `opencode-v2-strict` (or `V2_POLICY_MODE=strict`) retains
 the older contract/allowlist behavior for intentionally constrained work;
-`opencode-v2-light` selects light explicitly. Light mode keeps the measured
-AgentMemory capture hook and a bounded memory MCP retrieval/save surface, but
-does not inherit prompt-heavy global agent plugins by default. Set
+`opencode-v2-light` selects light explicitly. Light mode exposes a bounded
+five-tool AgentMemory retrieval/save surface through the configured MCP
+transport; it does not load the always-on capture/bootstrap hook or inherit
+prompt-heavy global agent plugins by default. Set
 `V2_SUPERVISOR_ISOLATE_PLUGINS=0` to opt into the full configured plugin list
 for a disposable comparison. Set `V2_OPENCODE_CONFIG_HOME` for a disposable
 config. Roll back to strict with `opencode-v2-strict`; v2 SQLite state is

@@ -34,8 +34,8 @@ if [[ "$POLICY_MODE" == "strict" ]]; then
   export V2_SUPERVISOR_ISOLATE_PLUGINS="${V2_SUPERVISOR_ISOLATE_PLUGINS:-1}"
 else
   export V2_SUPERVISOR_REQUIRE_CONTRACT="0"
-  # Light mode keeps only the measured useful AgentMemory capture hook and
-  # filters its MCP tool registry; prompt-heavy global plugins are opt-in.
+  # Light mode keeps the supervisor and bounded AgentMemory MCP registry;
+  # prompt-heavy global plugins/hooks are opt-in.
   export V2_SUPERVISOR_ISOLATE_PLUGINS="${V2_SUPERVISOR_ISOLATE_PLUGINS:-1}"
 fi
 export V2_SUPERVISOR_PYTHON="${V2_SUPERVISOR_PYTHON:-$ROOT/.venv/bin/python}"
