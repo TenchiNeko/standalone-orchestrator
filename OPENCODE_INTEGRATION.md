@@ -55,8 +55,10 @@ Verified on OpenCode **1.18.31** and `@opencode-ai/plugin` **1.14.48**:
 The installed hook has no typed deny return and no trusted stop-generation API.
 A deterministic BLOCK throws before a built-in tool runs (proven in the
 disposable fixture); a fork would be needed for a stronger universal host gate.
-After v2 records `COMPLETE`, every later project mutation, shell command, or test
-is blocked until a new contract is started.
+After v2 records `COMPLETE`, later mutation, shell, or test actions for that
+closed task are blocked. In light mode a new explicit `orchestrator_start`
+releases the closed task naturally; strict mode retains the explicit end/new
+contract workflow.
 
 ## Daily contract workflow
 
