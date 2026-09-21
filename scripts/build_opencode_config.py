@@ -9,6 +9,7 @@ from pathlib import Path
 
 
 DEFAULT_COMPACTION_RESERVED = 4_000
+AGENTMEMORY_PLUGIN = "/home/brandon/.config/opencode/plugins/agentmemory-capture.ts"
 
 
 def compaction_reserved() -> int:
@@ -27,15 +28,31 @@ def main() -> int:
     root = Path(__file__).resolve().parents[1]
     config_path = Path(os.environ.get("OPENCODE_USER_CONFIG", "~/.config/opencode/opencode.json")).expanduser()
     config = json.loads(config_path.read_text()) if config_path.exists() else {}
-    # OpenCode also merges its XDG config.  The daily launcher opts into an
-    # isolated config home and must not re-add global AgentMemory/Superpowers
-    # plugins (their large instructions and independent tools defeat the
-    # single supervised loop).  The user's global config remains untouched.
-    plugins = [] if os.environ.get("V2_SUPERVISOR_ISOLATE_PLUGINS") == "1" else list(config.get("plugin") or [])
+    policy_mode = os.environ.get("V2_POLICY_MODE", "strict").strip().lower() or "strict"
+    # OpenCode also merges its XDG config.  Light mode keeps the useful
+    # AgentMemory capture hook, but excludes prompt-heavy global agents whose
+    # instructions were measured to double the local model's system payload.
+    # Strict mode preserves the old all-or-nothing isolation switch.
+    configured_plugins = list(config.get("plugin") or [])
+    if os.environ.get("V2_SUPERVISOR_ISOLATE_PLUGINS") == "1":
+        plugins = [item for item in configured_plugins if item == AGENTMEMORY_PLUGIN] if policy_mode == "light" else []
+    else:
+        plugins = configured_plugins
     plugin = str(root / "opencode-plugin" / "orchestrator-supervisor.ts")
     if plugin not in plugins:
         plugins.append(plugin)
     config["plugin"] = plugins
+    if policy_mode == "light":
+        mcp = dict(config.get("mcp") or {})
+        memory = mcp.get("agentmemory")
+        if isinstance(memory, dict) and memory.get("enabled", True):
+            # AgentMemory's remote server exposes 54 tools.  Keep memory
+            # retrieval/save/consolidation available through a local stdio
+            # filter while avoiding that entire schema on every request.
+            memory = dict(memory)
+            memory["command"] = ["node", str(root / "scripts" / "agentmemory-mcp-filter.mjs")]
+            mcp["agentmemory"] = memory
+            config["mcp"] = mcp
     providers = dict(config.get("provider") or {})
     providers["orca-q6"] = {
         "npm": "@ai-sdk/openai-compatible",

@@ -111,6 +111,46 @@ function localResult(value: Json): string {
   return JSON.stringify(value, null, 2)
 }
 
+function compactFacts(summary: Json): string {
+  const list = (value: unknown, limit: number): unknown[] => Array.isArray(value) ? value.slice(0, limit) : []
+  const text = (value: unknown, limit: number): string => String(value ?? "").slice(0, limit)
+  const facts: Json = {
+    task_id: summary.task_id,
+    workspace: summary.workspace,
+    phase: summary.phase,
+    policy_mode: summary.policy_mode,
+    scope_mode: summary.scope_mode,
+    goal: text(summary.goal, 900),
+    blockers: list(summary.blockers, 5),
+    completion: summary.completion,
+    criteria: list(summary.criteria, 12),
+    loop_warnings: list(summary.loop_warnings, 3),
+    warnings: list(summary.warnings, 3),
+    counts: summary.counts,
+    permitted_files: list(summary.permitted_files, 20),
+    permitted_files_count: summary.permitted_files_count,
+    permitted_files_truncated: summary.permitted_files_truncated,
+    scope_expansions_count: summary.scope_expansions_count,
+  }
+  const encoded = JSON.stringify(facts)
+  if (encoded.length <= 1800) return encoded
+  // Keep the objective and completion blockers valid and present even when a
+  // caller supplies unusually long task metadata.
+  return JSON.stringify({
+    task_id: summary.task_id,
+    workspace: summary.workspace,
+    phase: summary.phase,
+    policy_mode: summary.policy_mode,
+    goal: text(summary.goal, 700),
+    blockers: list(summary.blockers, 3),
+    completion: summary.completion,
+    counts: summary.counts,
+    permitted_files_count: summary.permitted_files_count,
+    permitted_files_truncated: true,
+    omitted: "scope and optional status details omitted from compaction anchor; call orchestrator_status",
+  })
+}
+
 function stateChangingTool(name: string): boolean {
   return /^(write|edit|apply_patch|patch|bash|shell|terminal|run)$/i.test(name)
 }
@@ -244,8 +284,7 @@ export const OrchestratorSupervisorPlugin: Plugin = async (ctx) => {
     "experimental.session.compacting": async (input, output) => {
       const summary = await bridge.call({ op: "summary", session_id: input.sessionID })
       if (Array.isArray(output.context) && summary.status === "OK") {
-        const compact = JSON.stringify({ task_id: summary.task_id, workspace: summary.workspace, phase: summary.phase, policy_mode: summary.policy_mode, scope_mode: summary.scope_mode, permitted_files: summary.permitted_files, scope_expansions: summary.scope_expansions, drift_warnings: summary.drift_warnings, permitted_actions: summary.permitted_actions, test_command: summary.test_command, visual_required: summary.visual_required, budget_limit: summary.budget_limit, budget_calls: summary.budget_calls, remaining_budget: summary.remaining_budget, criteria: summary.criteria, completion: summary.completion, blockers: summary.blockers, counts: summary.counts, loop_warnings: summary.loop_warnings, warnings: summary.warnings, goal: summary.goal })
-        output.context.push("Local v2 facts (re-fetch with orchestrator_status; no prose authority):\n" + compact.slice(0, 1800))
+        output.context.push("Local v2 facts (re-fetch with orchestrator_status; no prose authority):\n" + compactFacts(summary))
       }
     },
     "experimental.compaction.autocontinue": async (input, output) => {

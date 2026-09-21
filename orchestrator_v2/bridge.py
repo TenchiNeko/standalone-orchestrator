@@ -44,6 +44,10 @@ WRITE_TOOLS = {"write", "edit", "apply_patch", "patch"}
 SHELL_TOOLS = {"bash", "shell", "terminal", "run"}
 SHELL_META = re.compile(r"[;&|<>$`(){}*?\[\]\n\r]")
 BRIDGE_VERSION = "opencode-supervisor-v1"
+MODEL_SCOPE_SAMPLE_LIMIT = 40
+MODEL_SCOPE_EXPANSION_LIMIT = 20
+MODEL_BLOCKER_LIMIT = 12
+MODEL_GOAL_LIMIT = 2000
 
 
 def _json_hash(value: Any) -> str:
@@ -206,6 +210,16 @@ class SupervisorBridge:
     @staticmethod
     def _scope(task: Task) -> list[str] | None:
         return task_scope(task)
+
+    @staticmethod
+    def _model_scope(scope: list[str]) -> tuple[list[str], int, bool]:
+        """Return a bounded model-facing scope while retaining full state internally."""
+        normalized = [Path(item).as_posix() for item in scope]
+        if len(normalized) <= MODEL_SCOPE_SAMPLE_LIMIT:
+            return normalized, len(normalized), False
+        head = MODEL_SCOPE_SAMPLE_LIMIT // 2
+        tail = MODEL_SCOPE_SAMPLE_LIMIT - head
+        return normalized[:head] + normalized[-tail:], len(normalized), True
 
     def _track_path(self, task: Task, path: str | None, reason: str) -> str | None:
         if not path:
@@ -702,17 +716,23 @@ class SupervisorBridge:
         budget_warning = []
         if self.light_mode and remaining_budget <= max(3, task.budget_limit // 8):
             budget_warning.append("light supervisor budget is nearing exhaustion; summarize progress before another retry")
+        raw_scope = self._scope(task) or []
+        display_scope, scope_count, scope_truncated = self._model_scope(raw_scope)
+        unique_blockers = list(dict.fromkeys(str(x) for x in blockers if x))
         return {
             "status": "OK",
             "task_id": task.task_id,
             "workspace": str(Path(task.workspace).resolve()),
             "phase": task.phase.value,
-            "goal": goal,
+            "goal": str(goal)[:MODEL_GOAL_LIMIT],
             # Strict mode exposes its immutable ACL; light mode exposes the
             # observed scope as telemetry rather than an authorization list.
-            "permitted_files": [Path(item).as_posix() for item in (self._scope(task) or [])],
+            "permitted_files": display_scope,
+            "permitted_files_count": scope_count,
+            "permitted_files_truncated": scope_truncated,
             "scope_mode": "dynamic" if self.light_mode else "immutable",
-            "scope_expansions": sorted(dict.fromkeys(scope_expansions))[-100:],
+            "scope_expansions": sorted(dict.fromkeys(scope_expansions))[-MODEL_SCOPE_EXPANSION_LIMIT:],
+            "scope_expansions_count": len(set(scope_expansions)),
             "drift_warnings": drift_warnings[-5:],
             "permitted_actions": list(task.contract.permitted_actions),
             "test_command": list(task.contract.test_command or []),
@@ -722,7 +742,8 @@ class SupervisorBridge:
             "remaining_budget": remaining_budget,
             "criteria": [{"key": c.key, "status": c.status} for c in task.contract.criteria],
             "completion": {"allowed": gate.get("allowed"), "reason": gate.get("reason"), "pending": gate.get("pending", []), "unresolved_mutations": len(gate.get("unresolved_mutations", []))},
-            "blockers": list(dict.fromkeys(str(x) for x in blockers if x)),
+            "blockers": unique_blockers[:MODEL_BLOCKER_LIMIT],
+            "blockers_truncated": len(unique_blockers) > MODEL_BLOCKER_LIMIT,
             "counts": counts,
             "loop_warnings": loop_warnings[-5:],
             "warnings": budget_warning,

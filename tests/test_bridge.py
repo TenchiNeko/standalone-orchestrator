@@ -244,6 +244,21 @@ class BridgeTests(unittest.TestCase):
             self.assertEqual(restarted["status"], "STARTED")
             self.assertEqual(bridge.summary({"session_id": "scope"})["permitted_files"], [".scratch/helper.py"])
 
+    def test_light_status_bounds_seeded_scope_but_keeps_internal_count(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict("os.environ", {"V2_POLICY_MODE": "light", "V2_SUPERVISOR_REQUIRE_CONTRACT": "0"}, clear=False):
+            root = Path(directory)
+            for index in range(120):
+                (root / f"module-{index:03}.py").write_text(f"value = {index}\n")
+            bridge = SupervisorBridge(root / "state")
+            self.assertEqual(bridge.start({"goal": "inspect this project", "criteria": [{"key": "seen", "description": "the project was inspected"}]}, "bounded", str(root))["status"], "STARTED")
+            bridge.before({"session_id": "bounded", "call_id": "inspect", "tool": "bash", "args": {"command": "git status", "workdir": str(root)}})
+            status = bridge.summary({"session_id": "bounded"})
+            self.assertEqual(status["scope_mode"], "dynamic")
+            self.assertEqual(status["permitted_files_count"], 120)
+            self.assertTrue(status["permitted_files_truncated"])
+            self.assertEqual(len(status["permitted_files"]), 40)
+            self.assertLess(len(json.dumps(status, separators=(",", ":"))), 6000)
+
     def test_light_broad_reads_dynamic_writes_and_test_files(self):
         with tempfile.TemporaryDirectory() as directory, patch.dict("os.environ", {"V2_POLICY_MODE": "light", "V2_SUPERVISOR_REQUIRE_CONTRACT": "0"}, clear=False):
             root = Path(directory); (root / "app.py").write_text("x = 1\n"); (root / "config.yaml").write_text("x: 1\n")
