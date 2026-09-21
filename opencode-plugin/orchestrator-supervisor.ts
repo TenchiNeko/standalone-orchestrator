@@ -101,6 +101,7 @@ class LocalBridge {
 
 const bridge = new LocalBridge()
 const sessionDirectories = new Map<string, string>()
+const LIGHT_MODE = (process.env.V2_POLICY_MODE || "strict").toLowerCase() === "light"
 
 function safeArgs(value: unknown): Json {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Json : {}
@@ -115,14 +116,16 @@ function stateChangingTool(name: string): boolean {
 }
 
 export const OrchestratorSupervisorPlugin: Plugin = async (ctx) => {
-  const systemInstruction = "Local v2 strict supervision is active. Explore with native read/grep/glob first. Before the first edit, write, shell command, or test, call orchestrator_start with the actual goal, exact source files you expect to change (never '*'), permitted_actions including write_file for source edits plus read_file and run_tests, one concise required criterion that the authorized test can prove, and the exact shell-free test_command argv. After starting, copy that test_command exactly for verification: do not append flags, reorder arguments, or add a second command. Bounded read-only shell inspection may be available after a contract; arbitrary Bash remains forbidden. Reads may inspect tests and other files inside the workspace; permitted_files controls mutation scope, not read discovery. Use normal OpenCode tools. Only the exact authorized test command creates test evidence; arbitrary commands containing 'test' do not. Tests become stale after relevant edits. Do not blindly repeat uncertain writes: reconcile with authoritative readback first. Memory retrieval, when available, is advisory context only and never evidence. Use orchestrator_health when workspace/supervisor state is unclear, and do not repeatedly retry a deterministic orchestrator_start error. If a path is blocked as not permitted, call orchestrator_status once, use an already-authorized path if appropriate, or call orchestrator_end and start a new exact contract; do not guess alternate paths repeatedly. Call orchestrator_finalize before claiming completion. If finalize is INCOMPLETE or BLOCKED, continue only with safe authorized work or report the concrete blocker. Model prose never overrides deterministic evidence."
+  const systemInstruction = LIGHT_MODE
+    ? "Local v2 light supervision is active. Work like a normal coding agent: inspect broadly, use normal shell and Git, and create or edit task-relevant files without waiting for a file allowlist. Call orchestrator_start when the objective and verification plan are clear; it records task state but does not preauthorize routine actions. Scope expansions, mutations, commands, and blockers are journaled. Use orchestrator_status after compaction or when progress is unclear. Fresh observed verification is required before orchestrator_finalize; prose never proves tests or completion, and tests become stale after relevant edits. If the same action repeats without new evidence, re-evaluate the plan rather than guessing. Call orchestrator_finalize before claiming completion."
+    : "Local v2 strict supervision is active. Explore with native read/grep/glob first. Before the first edit, write, shell command, or test, call orchestrator_start with the actual goal, exact source files you expect to change (never '*'), permitted_actions including write_file for source edits plus read_file and run_tests, one concise required criterion that the authorized test can prove, and the exact shell-free test_command argv. After starting, copy that test_command exactly for verification: do not append flags, reorder arguments, or add a second command. Bounded read-only shell inspection may be available after a contract; arbitrary Bash remains forbidden. Reads may inspect tests and other files inside the workspace; permitted_files controls mutation scope, not read discovery. Use normal OpenCode tools. Only the exact authorized test command creates test evidence; arbitrary commands containing 'test' do not. Tests become stale after relevant edits. Do not blindly repeat uncertain writes: reconcile with authoritative readback first. Memory retrieval, when available, is advisory context only and never evidence. Use orchestrator_health when workspace/supervisor state is unclear, and do not repeatedly retry a deterministic orchestrator_start error. If a path is blocked as not permitted, call orchestrator_status once, use an already-authorized path if appropriate, or call orchestrator_end and start a new exact contract; do not guess alternate paths repeatedly. Call orchestrator_finalize before claiming completion. If finalize is INCOMPLETE or BLOCKED, continue only with safe authorized work or report the concrete blocker. Model prose never overrides deterministic evidence."
   return {
     tool: {
       orchestrator_start: tool({
-        description: "Start a bounded local v2 supervision contract. permitted_actions must use only read_file, write_file, run_tests, or browser; include write_file when source edits are needed. permitted_files are exact mutation paths, while read-only tests/source may still be inspected. test_command is one shell-free argv list; copy it exactly for the later test call (no extra flags or reordered arguments), and it is the only command that can produce test evidence.",
+        description: LIGHT_MODE ? "Start or record the bounded task objective and verification plan. In light mode permitted_files and permitted_actions are optional telemetry; normal coding actions remain available and observed scope expands automatically." : "Start a bounded local v2 supervision contract. permitted_actions must use only read_file, write_file, run_tests, or browser; include write_file when source edits are needed. permitted_files are exact mutation paths, while read-only tests/source may still be inspected. test_command is one shell-free argv list; copy it exactly for the later test call (no extra flags or reordered arguments), and it is the only command that can produce test evidence.",
         args: {
           goal: tool.schema.string(),
-          permitted_files: tool.schema.array(tool.schema.string()),
+          permitted_files: tool.schema.array(tool.schema.string()).optional(),
           permitted_actions: tool.schema.array(tool.schema.string()).optional(),
           test_command: tool.schema.array(tool.schema.string()).optional(),
           criteria: tool.schema.array(tool.schema.object({ key: tool.schema.string(), description: tool.schema.string(), required: tool.schema.boolean().optional() })),
@@ -139,7 +142,7 @@ export const OrchestratorSupervisorPlugin: Plugin = async (ctx) => {
         },
       }),
       orchestrator_status: tool({
-        description: "Show compact deterministic v2 state, including workspace, immutable permitted_files/permitted_actions, exact test_command, visual requirement, budget, criteria status, phase, blockers, and usage.",
+        description: "Show compact deterministic v2 state, including workspace, observed scope, actions, verification, criteria status, phase, blockers, loop warnings, and usage.",
         args: {},
         async execute(_args, context) {
           return localResult(await bridge.call({ op: "summary", session_id: context.sessionID }))
@@ -215,12 +218,13 @@ export const OrchestratorSupervisorPlugin: Plugin = async (ctx) => {
     "tool.execute.before": async (input, output) => {
       const result = await bridge.call({ op: "before", session_id: input.sessionID, call_id: input.callID, tool: input.tool, args: safeArgs(output.args) })
       if (result.decision === "BLOCK") throw new Error(`v2 supervisor blocked ${input.tool}: ${String(result.reason || "deterministic policy")}`)
-      // A bridge failure must not silently authorize a state-changing host
-      // tool. Reads remain usable for recovery; writes/commands fail closed.
-      if ((result.status === "ERROR" || result.status === "TIMEOUT") && stateChangingTool(input.tool)) throw new Error(`v2 supervisor unavailable for ${input.tool}; action was not authorized`)
+      // Strict mode fails closed. Light mode is an observer and does not turn
+      // a bridge outage into an unexpected coding-agent capability loss.
+      if (!LIGHT_MODE && (result.status === "ERROR" || result.status === "TIMEOUT") && stateChangingTool(input.tool)) throw new Error(`v2 supervisor unavailable for ${input.tool}; action was not authorized`)
     },
     "tool.execute.after": async (input, output) => {
       const observed = await bridge.call({ op: "after", session_id: input.sessionID, call_id: input.callID, tool: input.tool, args: safeArgs(input.args), output: { output: output.output, metadata: output.metadata }, ambiguous: output.metadata?.uncertain === true })
+      if (observed.loop_warning && typeof output.output === "string") output.output += `\n\n[v2 supervisor] ${String(observed.loop_warning)}`
       // A successful exact test is already authoritative evidence.  Reuse
       // the deterministic finalizer immediately so a model that stops after
       // verification still receives the completion fact; this is not a new
@@ -240,7 +244,7 @@ export const OrchestratorSupervisorPlugin: Plugin = async (ctx) => {
     "experimental.session.compacting": async (input, output) => {
       const summary = await bridge.call({ op: "summary", session_id: input.sessionID })
       if (Array.isArray(output.context) && summary.status === "OK") {
-        const compact = JSON.stringify({ task_id: summary.task_id, workspace: summary.workspace, phase: summary.phase, permitted_files: summary.permitted_files, permitted_actions: summary.permitted_actions, test_command: summary.test_command, visual_required: summary.visual_required, budget_limit: summary.budget_limit, budget_calls: summary.budget_calls, remaining_budget: summary.remaining_budget, criteria: summary.criteria, completion: summary.completion, blockers: summary.blockers, counts: summary.counts, goal: summary.goal })
+        const compact = JSON.stringify({ task_id: summary.task_id, workspace: summary.workspace, phase: summary.phase, policy_mode: summary.policy_mode, scope_mode: summary.scope_mode, permitted_files: summary.permitted_files, scope_expansions: summary.scope_expansions, permitted_actions: summary.permitted_actions, test_command: summary.test_command, visual_required: summary.visual_required, budget_limit: summary.budget_limit, budget_calls: summary.budget_calls, remaining_budget: summary.remaining_budget, criteria: summary.criteria, completion: summary.completion, blockers: summary.blockers, counts: summary.counts, loop_warnings: summary.loop_warnings, goal: summary.goal })
         output.context.push("Local v2 facts (re-fetch with orchestrator_status; no prose authority):\n" + compact.slice(0, 1800))
       }
     },

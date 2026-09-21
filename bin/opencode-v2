@@ -9,21 +9,33 @@ if [[ ! -x "$OPEN" ]]; then
   exit 127
 fi
 
-# A strict task must start in the intended project, not a filesystem or home
-# root.  This check is deliberately narrow and fail-closed; a human can make
-# an explicit process-level exception for an unusual broad-workspace task.
+# Both policies refuse accidental filesystem/home-root intake before OpenCode
+# starts.  This is a performance guard, not a read/write capability jail.
+# Daily mode is the autonomy-preserving observer.  Use opencode-v2-strict or
+# V2_POLICY_MODE=strict for intentionally constrained experiments.
+POLICY_MODE="${V2_POLICY_MODE:-light}"
+if [[ "$POLICY_MODE" != "strict" && "$POLICY_MODE" != "light" ]]; then
+  echo "opencode-v2: V2_POLICY_MODE must be strict or light" >&2
+  exit 2
+fi
 WORKSPACE="$(pwd -P)"
 HOME_REAL="$(cd "${HOME:-/}" 2>/dev/null && pwd -P)"
 if [[ "${V2_SUPERVISOR_ALLOW_BROAD_WORKSPACE:-0}" != "1" && ( "$WORKSPACE" == "/" || "$WORKSPACE" == "$HOME_REAL" ) ]]; then
-  echo "opencode-v2: strict mode refuses to use $WORKSPACE as the coding workspace." >&2
+  echo "opencode-v2: $POLICY_MODE mode refuses to use $WORKSPACE as the coding workspace." >&2
   echo "Start from the intended project directory, for example:" >&2
   echo "  cd /home/brandon/popmart-bot" >&2
   echo "  opencode-v2 --auto" >&2
   exit 2
 fi
 
-export V2_SUPERVISOR_REQUIRE_CONTRACT="1"
-export V2_SUPERVISOR_ISOLATE_PLUGINS="${V2_SUPERVISOR_ISOLATE_PLUGINS:-1}"
+export V2_POLICY_MODE="$POLICY_MODE"
+if [[ "$POLICY_MODE" == "strict" ]]; then
+  export V2_SUPERVISOR_REQUIRE_CONTRACT="1"
+  export V2_SUPERVISOR_ISOLATE_PLUGINS="${V2_SUPERVISOR_ISOLATE_PLUGINS:-1}"
+else
+  export V2_SUPERVISOR_REQUIRE_CONTRACT="0"
+  export V2_SUPERVISOR_ISOLATE_PLUGINS="${V2_SUPERVISOR_ISOLATE_PLUGINS:-0}"
+fi
 export V2_SUPERVISOR_PYTHON="${V2_SUPERVISOR_PYTHON:-$ROOT/.venv/bin/python}"
 export V2_SUPERVISOR_STATE="${V2_SUPERVISOR_STATE:-$HOME/.local/state/opencode/orchestrator-v2}"
 export OPENCODE_CONFIG_CONTENT="$(python3 "$ROOT/scripts/build_opencode_config.py" "$@")"
