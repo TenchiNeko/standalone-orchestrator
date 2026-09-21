@@ -5,7 +5,7 @@ import json
 from typing import Any
 from pathlib import Path
 
-from .state import StateStore, Task, file_manifest, source_hash
+from .state import StateStore, Task, file_manifest, source_hash, task_scope
 
 
 FEATURE_SCHEMA = (
@@ -29,7 +29,8 @@ def feature_vector(task: Task, store: StateStore, root: Path, *, cross_run_findi
     intake = next((e for e in events if e["kind"] == "intake"), None)
     intake_payload = json.loads(intake["payload"]) if intake else {}
     before = intake_payload.get("file_manifest", {})
-    current = file_manifest(root, task.contract.permitted_files)
+    scope = task_scope(task)
+    current = file_manifest(root, scope)
     changed = sum(1 for key in set(before) | set(current) if before.get(key) != current.get(key))
     tests = [e for e in events if e["kind"] == "evidence_recorded" and json.loads(e["payload"]).get("kind") in {"test", "final_test"}]
     evidence = [e for e in events if e["kind"] == "evidence_recorded"]
@@ -45,11 +46,11 @@ def feature_vector(task: Task, store: StateStore, root: Path, *, cross_run_findi
             payload = record.get("payload", {})
             if payload.get("exit_code") == 0 and not payload.get("timed_out"):
                 test_passed = True
-            if record.get("source_hash") != source_hash(root, task.contract.permitted_files):
+            if record.get("source_hash") != source_hash(root, scope):
                 test_stale = True
     payload = {
         "read_only_task": not any(a in task.contract.permitted_actions for a in ("write_file", "browser")),
-        "permitted_file_count": len(task.contract.permitted_files),
+        "permitted_file_count": len(scope or []),
         "changed_file_count": changed,
         "repo_dirty": changed > 0,
         "prior_stuck_loop": any(getattr(f, "kind", "") == "PRIOR_STUCK_LOOP" for f in (cross_run_findings or [])),

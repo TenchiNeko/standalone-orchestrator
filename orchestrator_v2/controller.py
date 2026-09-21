@@ -9,7 +9,7 @@ from .jev import JevAdapter
 from .ocr import OCRDelegation
 from .decisions import DecisionProvider, DeterministicDecisionProvider
 from .context_gc import ContextBlock, ContextGC, ContextResult
-from .state import Criterion, Phase, StateStore, Task, TaskContract, file_manifest, new_task, source_hash
+from .state import Criterion, Phase, StateStore, Task, TaskContract, file_manifest, new_task, source_hash, task_scope
 from .tools import ToolError, ToolRegistry, WorkspaceTools
 from .cross_run import LoopMemory
 from .features import feature_vector
@@ -35,31 +35,31 @@ class Controller:
         task.phase = phase; self.store.save_task(task); self.store.event(task.task_id, "phase", {"phase": phase.value})
 
     def run(self, task: Task, review: bool = True) -> Task:
-        root = Path(task.workspace); tools = WorkspaceTools(root, task.contract.permitted_files, task.contract.permitted_actions, task.contract.test_command)
+        root = Path(task.workspace); tools = WorkspaceTools(root, task_scope(task), task.contract.permitted_actions, task.contract.test_command, allow_broad_reads="*" in task.contract.permitted_files)
         identity = self.loop_memory.identity(task, root)
         findings = self.loop_memory.find(task, root, hypothesis=task.contract.goal.strip(), action="bounded_investigation")
         self.store.event(task.task_id, "cross_run_check", {**identity, "findings": [f.__dict__ for f in findings], "read_only_suppressed": self.loop_memory.should_suppress_read_only(task, findings)})
         review_ok = not review
         self._phase(task, Phase.INSPECT); self.store.evidence(task.task_id, "inspect", root, {"files": sorted(p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file() and ".git" not in p.parts)})
-        self._phase(task, Phase.PLAN); self.store.evidence(task.task_id, "plan", root, {"criteria": [c.description for c in task.contract.criteria]}, task.contract.permitted_files)
-        candidates = SymbolIndex(root, task.contract.permitted_files).render(task.contract.goal, limit=20)
-        self.store.evidence(task.task_id, "symbol_candidates", root, {"query": task.contract.goal, "candidates": candidates}, task.contract.permitted_files)
+        self._phase(task, Phase.PLAN); self.store.evidence(task.task_id, "plan", root, {"criteria": [c.description for c in task.contract.criteria]}, task_scope(task))
+        candidates = SymbolIndex(root, task_scope(task)).render(task.contract.goal, limit=20)
+        self.store.evidence(task.task_id, "symbol_candidates", root, {"query": task.contract.goal, "candidates": candidates}, task_scope(task))
         self._decision_probe(task, root, findings)
         if self.qwen and task.budget_calls < task.budget_limit and not self._model_budget_exhausted(task):
             response = self.qwen.chat([{"role": "system", "content": "Return a concise implementation plan. Do not claim execution or completion."}, {"role": "user", "content": json.dumps({"goal": task.contract.goal, "criteria": [c.description for c in task.contract.criteria]})}], max_tokens=350)
-            task.budget_calls += 1; self.store.evidence(task.task_id, "qwen_plan", root, {"content": response.content, "usage": response.usage, "finish_reason": response.finish_reason, "elapsed": response.elapsed}, task.contract.permitted_files); self._record_model_usage(task, "plan", response)
+            task.budget_calls += 1; self.store.evidence(task.task_id, "qwen_plan", root, {"content": response.content, "usage": response.usage, "finish_reason": response.finish_reason, "elapsed": response.elapsed}, task_scope(task)); self._record_model_usage(task, "plan", response)
         self._phase(task, Phase.IMPLEMENT)
         if self.qwen and task.budget_calls < task.budget_limit and "read_file" in task.contract.permitted_actions and not self._model_budget_exhausted(task):
             self._bounded_worker(task, root, tools)
         else:
             self.store.event(task.task_id, "implementation", {"mode": "deterministic", "note": "model worker skipped by budget or contract"})
-        self._phase(task, Phase.TEST); result = tools.run_tests(); ref = self.store.evidence(task.task_id, "test", root, result, task.contract.permitted_files); self.store.event(task.task_id, "test_result", {"ref": ref, "exit_code": result["exit_code"]})
+        self._phase(task, Phase.TEST); result = tools.run_tests(); ref = self.store.evidence(task.task_id, "test", root, result, task_scope(task)); self.store.event(task.task_id, "test_result", {"ref": ref, "exit_code": result["exit_code"]})
         if result["exit_code"] != 0:
             task.phase = Phase.BLOCKED; task.unresolved.append("required tests failed"); self.store.save_task(task); return task
         if review:
             self._phase(task, Phase.REVIEW)
             try:
-                preview = self.ocr.preview(root); self.store.evidence(task.task_id, "ocr_preview", root, preview, task.contract.permitted_files)
+                preview = self.ocr.preview(root); self.store.evidence(task.task_id, "ocr_preview", root, preview, task_scope(task))
                 candidates = preview.get("reviewable_files", preview.get("files", []))
                 files = [x.get("path") for x in candidates if isinstance(x, dict) and x.get("path")]
                 if files: self.store.evidence(task.task_id, "ocr_rules", root, {"files": files, "rules": self.ocr.rules(root, files)}, files)
@@ -67,7 +67,7 @@ class Controller:
             except Exception as exc:
                 task.unresolved.append(f"OCR unavailable: {exc}")
         self._phase(task, Phase.FINAL_VERIFY)
-        fresh = tools.run_tests(); ref = self.store.evidence(task.task_id, "final_test", root, fresh, task.contract.permitted_files)
+        fresh = tools.run_tests(); ref = self.store.evidence(task.task_id, "final_test", root, fresh, task_scope(task))
         gate = self.completion_gate(task, root, review_ok)
         if not gate["allowed"]:
             task.phase = Phase.NEEDS_REVIEW if gate["needs_review"] else Phase.BLOCKED
@@ -75,7 +75,7 @@ class Controller:
         else:
             for c in task.contract.criteria:
                 if c.required:
-                    c.status = "verified"; c.evidence.append(ref); c.verified_source_hash = source_hash(root, task.contract.permitted_files)
+                    c.status = "verified"; c.evidence.append(ref); c.verified_source_hash = source_hash(root, task_scope(task))
                 elif c.status == "pending":
                     c.status = "advisory"
             task.phase = Phase.COMPLETE
@@ -83,13 +83,13 @@ class Controller:
 
     def completion_gate(self, task: Task, root: Path, review_ok: bool = True) -> dict[str, object]:
         """Deterministic completion facts; model prose cannot make this pass."""
-        current = self.store.current_successful_check(task.task_id, root, task.contract.permitted_files)
+        current = self.store.current_successful_check(task.task_id, root, task_scope(task))
         unresolved_mutations = self.store.unresolved_mutations(task.task_id)
         visual = None
         if task.contract.visual_required:
             with self.store._db() as db:
                 rows = db.execute("SELECT id, source_hash FROM evidence WHERE task_id=? AND kind='visual_verify' ORDER BY id DESC", (task.task_id,)).fetchall()
-            digest = source_hash(root, task.contract.permitted_files)
+            digest = source_hash(root, task_scope(task))
             visual = next((f"evidence:{row['id']}" for row in rows if row["source_hash"] == digest), None)
         required_pending = [criterion.key for criterion in task.contract.criteria if criterion.required and criterion.status != "verified"]
         if not current:
@@ -126,7 +126,7 @@ class Controller:
             self.traces.record(task.task_id, root, run_id=task.task_id, decision_family="next_read_only", phase=task.phase.value, before=before, deterministic_choice="VERIFY", provider_choice=None, after=feature_vector(task, self.store, root, cross_run_findings=prior_findings or []))
             return
         payload = {"provider": batch.provider, "mode": self.decision_mode, "authority": "shadow-only", "latency": batch.latency, "decisions": [d.__dict__ for d in batch.decisions], "metadata": batch.metadata}
-        ref = self.store.evidence(task.task_id, "decision", root, payload, task.contract.permitted_files)
+        ref = self.store.evidence(task.task_id, "decision", root, payload, task_scope(task))
         self.store.event(task.task_id, "decision_judgment", {"ref": ref, "provider": batch.provider, "mode": self.decision_mode, "authority": "shadow-only"})
         selected = batch.decisions[0].selected
         self.loop_memory.record_attempt(task, root, hypothesis=task.contract.goal.strip(), action="bounded_investigation", outcome="NEW_EVIDENCE" if selected else "NO_PROGRESS", evidence=[ref], new_evidence=bool(selected))
@@ -136,7 +136,7 @@ class Controller:
         """Run a short native-tool loop; state and filesystem remain coordinator-owned."""
         messages = [
             {"role": "system", "content": "You are a bounded implementation worker. Inspect before editing. Use only the supplied native tools and only permitted files. Never claim a test or edit happened unless a tool result proves it. Stop when the contract is satisfied or report the concrete blocker."},
-            {"role": "user", "content": json.dumps({"goal": task.contract.goal, "criteria": [c.description for c in task.contract.criteria], "permitted_files": task.contract.permitted_files, "permitted_actions": task.contract.permitted_actions})},
+            {"role": "user", "content": json.dumps({"goal": task.contract.goal, "criteria": [c.description for c in task.contract.criteria], "permitted_files": task_scope(task), "permitted_actions": task.contract.permitted_actions})},
         ]
         registry = ToolRegistry()
         seen_actions: set[tuple[str, str, str]] = set()
@@ -146,7 +146,7 @@ class Controller:
                 return
             response = self.qwen.chat(messages, tools=registry.schemas(), max_tokens=1000)
             task.budget_calls += 1
-            self.store.evidence(task.task_id, "qwen_worker", root, {"content": response.content, "usage": response.usage, "finish_reason": response.finish_reason, "elapsed": response.elapsed}, task.contract.permitted_files)
+            self.store.evidence(task.task_id, "qwen_worker", root, {"content": response.content, "usage": response.usage, "finish_reason": response.finish_reason, "elapsed": response.elapsed}, task_scope(task))
             self._record_model_usage(task, "implement", response)
             if not response.tool_calls:
                 self.store.event(task.task_id, "worker_stopped", {"reason": "no_tool_call", "content": response.content[:2000]})
@@ -162,12 +162,12 @@ class Controller:
                 try:
                     args = json.loads(raw) if isinstance(raw, str) else raw
                     if not isinstance(args, dict): raise ValueError("arguments must be an object")
-                    action_key = (str(name), json.dumps(args, sort_keys=True), source_hash(root, task.contract.permitted_files))
+                    action_key = (str(name), json.dumps(args, sort_keys=True), source_hash(root, task_scope(task)))
                     if action_key in seen_actions:
                         self.store.event(task.task_id, "no_progress", {"name": name, "reason": "same action and source version repeated"})
                         return
                     seen_actions.add(action_key)
-                    key = hashlib.sha256(json.dumps([task.task_id, name, args, source_hash(root, task.contract.permitted_files)], sort_keys=True, default=str).encode()).hexdigest()[:24]
+                    key = hashlib.sha256(json.dumps([task.task_id, name, args, source_hash(root, task_scope(task))], sort_keys=True, default=str).encode()).hexdigest()[:24]
                     before_state = tools.file_state(args.get("path")) if name == "write_file" else None
                     if name == "write_file":
                         self.store.mutation_intent(task.task_id, name, key, {"path": args.get("path"), "before": before_state})

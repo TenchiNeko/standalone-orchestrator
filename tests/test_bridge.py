@@ -1,6 +1,8 @@
 import tempfile
 import time
 import json
+import subprocess
+import os
 import unittest
 from unittest.mock import patch
 from pathlib import Path
@@ -241,6 +243,108 @@ class BridgeTests(unittest.TestCase):
             }, "scope", str(root))
             self.assertEqual(restarted["status"], "STARTED")
             self.assertEqual(bridge.summary({"session_id": "scope"})["permitted_files"], [".scratch/helper.py"])
+
+    def test_light_broad_reads_dynamic_writes_and_test_files(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict("os.environ", {"V2_POLICY_MODE": "light", "V2_SUPERVISOR_REQUIRE_CONTRACT": "0"}, clear=False):
+            root = Path(directory); (root / "app.py").write_text("x = 1\n"); (root / "config.yaml").write_text("x: 1\n")
+            (root / "test_app.py").write_text("assert True\n")
+            bridge = SupervisorBridge(root / "state")
+            self.assertEqual(bridge.before({"session_id": "light", "tool": "read", "args": {"filePath": "config.yaml"}})["decision"], "ALLOW")
+            started = bridge.start({"goal": "repair app", "criteria": [{"key": "tests", "description": "verification passes"}]}, "light", str(root))
+            self.assertEqual(started["status"], "STARTED")
+            for call_id, path in (("write", ".scratch/helper.py"), ("test-write", "test_app.py")):
+                self.assertEqual(bridge.before({"session_id": "light", "call_id": call_id, "tool": "edit", "args": {"filePath": path}})["decision"], "ALLOW")
+                target = root / path; target.parent.mkdir(parents=True, exist_ok=True); target.write_text("assert True\n")
+                bridge.after({"session_id": "light", "call_id": call_id, "tool": "edit", "args": {"filePath": path}, "output": {"output": "ok", "metadata": {}}})
+            summary = bridge.summary({"session_id": "light"})
+            self.assertEqual(summary["scope_mode"], "dynamic")
+            self.assertIn(".scratch/helper.py", summary["scope_expansions"])
+            self.assertIn("test_app.py", summary["scope_expansions"])
+
+    def test_light_normal_shell_git_and_observed_verification(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict("os.environ", {"V2_POLICY_MODE": "light", "V2_SUPERVISOR_REQUIRE_CONTRACT": "0"}, clear=False):
+            root = Path(directory); (root / "app.py").write_text("x = 1\n")
+            subprocess.run(["git", "init", "-q", str(root)], check=True)
+            bridge = SupervisorBridge(root / "state")
+            bridge.start({"goal": "inspect and verify", "criteria": [{"key": "tests", "description": "tests pass"}]}, "shell", str(root))
+            for index, command in enumerate(("git status --short", "rg x app.py", "python3 -m unittest")):
+                call_id = f"shell-{index}"
+                self.assertEqual(bridge.before({"session_id": "shell", "call_id": call_id, "tool": "bash", "args": {"command": command, "workdir": str(root)}})["decision"], "ALLOW")
+                result = bridge.after({"session_id": "shell", "call_id": call_id, "tool": "bash", "args": {"command": command}, "output": {"output": "ok", "metadata": {"exit": 0}}})
+                if command.startswith("python3"):
+                    self.assertEqual(result["evidence"], "recorded")
+            self.assertEqual(bridge.finalize({"session_id": "shell"})["status"], "COMPLETE")
+
+    def test_light_git_write_is_observed_without_preauthorization(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict("os.environ", {"V2_POLICY_MODE": "light", "V2_SUPERVISOR_REQUIRE_CONTRACT": "0"}, clear=False):
+            root = Path(directory); (root / "app.py").write_text("x = 1\n")
+            subprocess.run(["git", "init", "-q", str(root)], check=True)
+            env = {**os.environ, "GIT_AUTHOR_NAME": "v2-test", "GIT_AUTHOR_EMAIL": "v2-test@example.invalid", "GIT_COMMITTER_NAME": "v2-test", "GIT_COMMITTER_EMAIL": "v2-test@example.invalid"}
+            subprocess.run(["git", "-C", str(root), "add", "app.py"], check=True, env=env)
+            subprocess.run(["git", "-C", str(root), "commit", "-qm", "initial"], check=True, env=env)
+            bridge = SupervisorBridge(root / "state")
+            bridge.start({"goal": "make and record a repository change", "criteria": [{"key": "recorded", "description": "the repository change is observed"}]}, "git-write", str(root))
+            (root / "app.py").write_text("x = 2\n")
+            for index, command in enumerate(("git add app.py", "git commit -qm changed")):
+                call_id = f"git-write-{index}"
+                before = bridge.before({"session_id": "git-write", "call_id": call_id, "tool": "bash", "args": {"command": command, "workdir": str(root)}})
+                self.assertEqual(before["decision"], "ALLOW", command)
+                subprocess.run(["git", "-C", str(root), *command.split()[1:]], check=True, env=env)
+                bridge.after({"session_id": "git-write", "call_id": call_id, "tool": "bash", "args": {"command": command}, "output": {"output": "ok", "metadata": {"exit": 0}}})
+            events = bridge._task(session_id="git-write")[0].store.events(bridge._task(session_id="git-write")[1].task_id)
+            self.assertTrue(any(row["kind"] == "tool_call" for row in events))
+
+    def test_light_unknown_write_reconciles_and_complete_starts_new_task(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict("os.environ", {"V2_POLICY_MODE": "light", "V2_SUPERVISOR_REQUIRE_CONTRACT": "0"}, clear=False):
+            root = Path(directory); (root / "app.py").write_text("x = 1\n")
+            bridge = SupervisorBridge(root / "state")
+            bridge.start({"goal": "repair", "criteria": [{"key": "tests", "description": "tests pass"}]}, "task", str(root))
+            args = {"filePath": "helper.py", "content": "x = 2\n"}
+            self.assertEqual(bridge.before({"session_id": "task", "call_id": "unknown", "tool": "edit", "args": args})["decision"], "ALLOW")
+            (root / "helper.py").write_text(args["content"])
+            result = bridge.after({"session_id": "task", "call_id": "unknown", "tool": "edit", "args": args, "ambiguous": True, "output": {"output": "uncertain", "metadata": {}}})
+            self.assertEqual(result["status"], "acknowledged")
+            self.assertEqual(bridge.summary({"session_id": "task"})["completion"]["unresolved_mutations"], 0)
+            bridge.before({"session_id": "task", "call_id": "test", "tool": "bash", "args": {"command": "python3 -m unittest"}})
+            bridge.after({"session_id": "task", "call_id": "test", "tool": "bash", "args": {"command": "python3 -m unittest"}, "output": {"output": "OK", "metadata": {"exit": 0}}})
+            self.assertEqual(bridge.finalize({"session_id": "task"})["status"], "COMPLETE")
+            self.assertEqual(bridge.before({"session_id": "task", "call_id": "old", "tool": "edit", "args": {"filePath": "app.py"}})["decision"], "BLOCK")
+            self.assertEqual(bridge.start({"goal": "new task", "criteria": [{"key": "tests", "description": "tests pass"}]}, "task", str(root))["status"], "STARTED")
+
+    def test_light_loop_warning_then_circuit_breaker_and_legitimate_iteration(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict("os.environ", {"V2_POLICY_MODE": "light", "V2_SUPERVISOR_REQUIRE_CONTRACT": "0"}, clear=False):
+            root = Path(directory); (root / "app.py").write_text("x = 1\n")
+            bridge = SupervisorBridge(root / "state")
+            bridge.start({"goal": "repair", "criteria": [{"key": "tests", "description": "tests pass"}]}, "loop", str(root))
+            bridge.before({"session_id": "loop", "call_id": "read-app", "tool": "read", "args": {"filePath": "app.py"}})
+            results = []
+            for index in range(4):
+                call_id = f"loop-{index}"
+                result = bridge.before({"session_id": "loop", "call_id": call_id, "tool": "bash", "args": {"command": "python3 -m unittest"}})
+                results.append(result["decision"])
+                if result["decision"] == "ALLOW":
+                    bridge.after({"session_id": "loop", "call_id": call_id, "tool": "bash", "args": {"command": "python3 -m unittest"}, "output": {"output": "fail", "metadata": {"exit": 1}}})
+            self.assertEqual(results, ["ALLOW", "ALLOW", "ALLOW", "BLOCK"])
+            # A changed source fingerprint makes a real iteration a new action.
+            (root / "app.py").write_text("x = 2\n")
+            self.assertEqual(bridge.before({"session_id": "loop", "call_id": "new", "tool": "bash", "args": {"command": "python3 -m unittest"}})["decision"], "ALLOW")
+
+            refreshed = SupervisorBridge(root / "refresh-state")
+            refreshed.start({"goal": "repair", "criteria": [{"key": "tests", "description": "tests pass"}]}, "refresh", str(root))
+            for index in range(3):
+                call_id = f"refresh-{index}"
+                self.assertEqual(refreshed.before({"session_id": "refresh", "call_id": call_id, "tool": "bash", "args": {"command": "python3 -m unittest"}})["decision"], "ALLOW")
+                refreshed.after({"session_id": "refresh", "call_id": call_id, "tool": "bash", "args": {"command": "python3 -m unittest"}, "output": {"output": "fail", "metadata": {"exit": 1}}})
+            self.assertEqual(refreshed.before({"session_id": "refresh", "call_id": "status", "tool": "orchestrator_status", "args": {}})["decision"], "ALLOW")
+            refreshed.summary({"session_id": "refresh"})
+            self.assertEqual(refreshed.before({"session_id": "refresh", "call_id": "after-refresh", "tool": "bash", "args": {"command": "python3 -m unittest"}})["decision"], "ALLOW")
+
+    def test_light_standalone_reads_are_not_coupled_to_write_scope(self):
+        from orchestrator_v2.tools import WorkspaceTools
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); (root / "dependency.py").write_text("x = 1\n")
+            tools = WorkspaceTools(root, ["app.py"], ["read_file", "write_file"], allow_broad_reads=True)
+            self.assertIn("x = 1", tools.read_file("dependency.py"))
 
 
 if __name__ == "__main__":

@@ -50,11 +50,12 @@ class ToolRegistry:
 class WorkspaceTools:
     """Small allowlisted tool boundary for a disposable workspace."""
 
-    def __init__(self, root: Path, permitted_files: list[str] | None = None, permitted_actions: list[str] | None = None, test_command: list[str] | None = None):
+    def __init__(self, root: Path, permitted_files: list[str] | None = None, permitted_actions: list[str] | None = None, test_command: list[str] | None = None, allow_broad_reads: bool = False):
         self.root = root.resolve()
         self.permitted_files = {Path(p).as_posix() for p in (permitted_files or [])}
         self.permitted_actions = set(permitted_actions or {"read_file", "write_file", "run_tests"})
         self.test_command = list(test_command) if test_command else None
+        self.allow_broad_reads = allow_broad_reads
 
     def _action(self, name: str) -> None:
         if name not in self.permitted_actions:
@@ -64,7 +65,10 @@ class WorkspaceTools:
         self._action(action)
         path = self._path(rel)
         normalized = path.relative_to(self.root).as_posix()
-        if self.permitted_files and normalized not in self.permitted_files:
+        # Reads are discovery, not mutation authorization.  Strict callers
+        # still constrain file_state/write_file, while light callers can
+        # inspect dependencies before the mutation set is known.
+        if (action != "read_file" or not self.allow_broad_reads) and self.permitted_files and normalized not in self.permitted_files:
             raise ToolError(f"file is not permitted: {normalized}")
         return path
 

@@ -59,8 +59,8 @@ class TaskContract:
             raise ValueError(f"unknown permitted actions: {sorted(unknown)}")
         if self.test_command is not None and "run_tests" not in self.permitted_actions:
             raise ValueError("test_command requires the run_tests action")
-        if self.test_command is not None and (not self.test_command or Path(self.test_command[0]).name not in {"python", "python3", "pytest"}):
-            raise ValueError("test_command must start with python or pytest")
+        if self.test_command is not None and not self.test_command:
+            raise ValueError("test_command must be a non-empty shell-free argv command")
         if any(not c.description.strip() for c in self.criteria):
             raise ValueError("criteria must be testable, non-empty descriptions")
         if len({c.key for c in self.criteria}) != len(self.criteria):
@@ -78,6 +78,10 @@ class Task:
     budget_calls: int = 0
     budget_limit: int = 12
     unresolved: list[str] = field(default_factory=list)
+    # In light mode the contract uses ``*`` as a dynamic observation marker;
+    # this list is the bounded set of files actually read or mutated so
+    # evidence does not require hashing the whole workspace.
+    scope_files: list[str] = field(default_factory=list)
     max_model_seconds: float | None = None
     max_repeated_actions: int = 3
     max_investigation_steps: int | None = None
@@ -85,7 +89,12 @@ class Task:
 
 def source_hash(root: Path, permitted: list[str] | None = None) -> str:
     h = hashlib.sha256()
-    paths = [root / p for p in permitted] if permitted else sorted(root.rglob("*"))
+    if permitted is None:
+        paths = sorted(root.rglob("*"))
+    elif "*" in permitted:
+        paths = []
+    else:
+        paths = [root / p for p in permitted]
     for p in sorted(paths):
         if p.is_file() and ".git" not in p.parts:
             rel = p.relative_to(root).as_posix()
@@ -95,7 +104,12 @@ def source_hash(root: Path, permitted: list[str] | None = None) -> str:
 
 def file_manifest(root: Path, permitted: list[str] | None = None) -> dict[str, dict[str, Any]]:
     """Stable file facts used by completion evidence and stale-check detection."""
-    paths = [root / p for p in permitted] if permitted else sorted(root.rglob("*"))
+    if permitted is None:
+        paths = sorted(root.rglob("*"))
+    elif "*" in permitted:
+        paths = []
+    else:
+        paths = [root / p for p in permitted]
     manifest: dict[str, dict[str, Any]] = {}
     for p in sorted(paths):
         if p.is_file() and ".git" not in p.parts:
@@ -276,3 +290,10 @@ class StateStore:
 def new_task(contract: TaskContract, workspace: Path, budget_limit: int = 12) -> Task:
     contract.validate()
     return Task(str(uuid.uuid4()), contract, str(workspace), budget_limit=budget_limit)
+
+
+def task_scope(task: Task) -> list[str] | None:
+    """Return the evidence scope without expanding a light task recursively."""
+    if "*" in task.contract.permitted_files:
+        return list(task.scope_files)
+    return list(task.contract.permitted_files)

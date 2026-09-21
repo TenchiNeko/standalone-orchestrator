@@ -10,6 +10,7 @@ import json
 import os
 import re
 import shlex
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -19,13 +20,13 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from orchestrator_v2.controller import Controller
     from orchestrator_v2.cross_run import LoopMemory
-    from orchestrator_v2.state import Criterion, Phase, Task, TaskContract, source_hash
+    from orchestrator_v2.state import Criterion, Phase, Task, TaskContract, source_hash, task_scope
     from orchestrator_v2.symbols import SymbolIndex
     from orchestrator_v2.usage import usage_summary
 else:
     from .controller import Controller
     from .cross_run import LoopMemory
-    from .state import Criterion, Phase, Task, TaskContract, source_hash
+    from .state import Criterion, Phase, Task, TaskContract, source_hash, task_scope
     from .symbols import SymbolIndex
     from .usage import usage_summary
 
@@ -86,6 +87,25 @@ def _exact_test_command(command: Any, configured: list[str] | None) -> bool:
     actual = _normal_command_args(command)
     expected = _normal_command_args(configured)
     return bool(actual and expected and actual == expected)
+
+
+def _looks_like_verification(command: Any) -> bool:
+    """Recognize likely verification commands without restricting light mode.
+
+    This is evidence classification only.  The host remains free to execute
+    any normal command in light mode; an exit-0 `ls` or `echo` is not a test.
+    """
+    args = _normal_command_args(command) if isinstance(command, (str, list)) else None
+    if not args:
+        return False
+    exe, rest = args[0], args[1:]
+    if exe in {"pytest", "unittest", "go"} and (exe != "go" or "test" in rest):
+        return True
+    if exe in {"npm", "npx", "yarn", "pnpm", "cargo", "mvn", "gradle", "make"}:
+        return any(part in {"test", "check", "verify", "lint", "typecheck"} for part in rest)
+    if exe in {"python", "python3"}:
+        return any(part in {"pytest", "unittest"} or "test" in Path(part).name.lower() for part in rest)
+    return exe in {"ruff", "mypy", "pyright", "flake8", "eslint", "tsc", "cmake"} and any(part in {"check", "test", "lint", "build"} for part in rest)
 
 
 def _safe_read_path(root: Path, value: str, base: Path | None = None) -> bool:
@@ -163,6 +183,10 @@ def _path_arg(args: dict[str, Any]) -> str | None:
 class SupervisorBridge:
     def __init__(self, state_root: Path | None = None):
         self.default_state_root = Path(state_root or os.environ.get("V2_SUPERVISOR_STATE", "~/.local/state/opencode/orchestrator-v2")).expanduser().resolve()
+        self.policy_mode = os.environ.get("V2_POLICY_MODE", "strict").strip().lower() or "strict"
+        if self.policy_mode not in {"strict", "light"}:
+            self.policy_mode = "strict"
+        self.light_mode = self.policy_mode == "light"
         self.require_contract = os.environ.get("V2_SUPERVISOR_REQUIRE_CONTRACT") == "1"
         self.allow_broad_workspace = os.environ.get("V2_SUPERVISOR_ALLOW_BROAD_WORKSPACE") == "1"
         self.sessions: dict[str, str] = {}
@@ -178,6 +202,45 @@ class SupervisorBridge:
         if key not in self.tasks:
             self.tasks[key] = Controller(Path(key))
         return self.tasks[key]
+
+    @staticmethod
+    def _scope(task: Task) -> list[str] | None:
+        return task_scope(task)
+
+    def _track_path(self, task: Task, path: str | None, reason: str) -> str | None:
+        if not path:
+            return None
+        root = Path(task.workspace).resolve()
+        rel = self._relative_path(root, path)
+        if rel is None:
+            return None
+        if "*" not in task.contract.permitted_files:
+            return rel
+        if rel not in task.scope_files:
+            task.scope_files.append(rel)
+            found = self._task(task_id=task.task_id)
+            controller = found[0] if found else self._controller(root)
+            controller.store.save_task(task)
+            controller.store.event(task.task_id, "scope_expanded", {"path": rel, "reason": reason, "mode": "light"})
+        return rel
+
+    @staticmethod
+    def _git_status(root: Path) -> list[str] | None:
+        if not (root / ".git").exists():
+            return None
+        try:
+            result = subprocess.run(
+                ["git", "-C", str(root), "-c", "core.quotepath=false", "status", "--porcelain=v1", "-z"],
+                check=False, capture_output=True, text=False,
+                env={"PATH": "/usr/bin:/bin", "GIT_CONFIG_NOSYSTEM": "1", "GIT_OPTIONAL_LOCKS": "0"},
+                timeout=3,
+            )
+            if result.returncode != 0:
+                return None
+            entries = [item for item in result.stdout.decode("utf-8", "replace").split("\0") if item]
+            return [entry[3:] if len(entry) >= 3 else entry for entry in entries]
+        except (OSError, subprocess.SubprocessError):
+            return None
 
     def _task(self, session_id: str | None = None, task_id: str | None = None) -> tuple[Controller, Task] | None:
         if task_id:
@@ -242,14 +305,22 @@ class SupervisorBridge:
             return {"status": "BLOCKED", "reason": broad_reason}
         existing = self._task(session_id=session_id)
         if existing:
-            _, active = existing
-            return {"status": "BLOCKED", "reason": f"session already has active task {active.task_id}; call orchestrator_end before starting another"}
-        permitted_files = list(args.get("permitted_files") or [])
+            controller, active = existing
+            if self.light_mode and active.phase == Phase.COMPLETE:
+                controller.store.event(active.task_id, "task_released", {"reason": "new explicit orchestrator_start after COMPLETE", "mode": "light"})
+                self.sessions.pop(session_id, None)
+            else:
+                return {"status": "BLOCKED", "reason": f"session already has active task {active.task_id}; call orchestrator_end before starting another"}
+        raw_files = list(args.get("permitted_files") or [])
+        if self.light_mode and not raw_files:
+            raw_files = ["*"]
+        permitted_files = raw_files
         if not permitted_files:
             return {"status": "BLOCKED", "reason": "permitted_files is required; v2 will not grant implicit repository-wide write access"}
         if self.require_contract and "*" in permitted_files:
             return {"status": "BLOCKED", "reason": "strict supervision rejects repository-wide wildcard permissions; list exact source files"}
         normalized_files: list[str] = []
+        initial_scope: list[str] = []
         for item in permitted_files:
             if not isinstance(item, str) or not item.strip():
                 return {"status": "BLOCKED", "reason": "permitted_files must contain non-empty paths"}
@@ -262,8 +333,15 @@ class SupervisorBridge:
             if self.require_contract and self._test_or_harness(rel):
                 return {"status": "BLOCKED", "reason": f"strict supervision does not grant write access to test/harness file: {rel}"}
             normalized_files.append(rel)
-        permitted_files = normalized_files
-        actions = list(args.get("permitted_actions") or ["read_file", "write_file", "run_tests"])
+            initial_scope.append(rel)
+        permitted_files = ["*"] if self.light_mode else normalized_files
+        if self.light_mode:
+            # Actions are telemetry in light mode, never an authorization ACL.
+            # Keep the stable vocabulary in persisted state even when a model
+            # supplies an incomplete or host-specific list.
+            actions = ["read_file", "write_file", "run_tests", "browser"]
+        else:
+            actions = list(args.get("permitted_actions") or ["read_file", "write_file", "run_tests"])
         criteria = [Criterion(str(item["key"]), str(item["description"]), bool(item.get("required", True))) for item in args.get("criteria", []) if isinstance(item, dict) and item.get("key") and item.get("description")]
         try:
             test_command = args.get("test_command")
@@ -276,15 +354,16 @@ class SupervisorBridge:
             return {"status": "BLOCKED", "reason": f"invalid task contract: {exc}"}
         state_dir = Path(args["state_dir"]).resolve() if args.get("state_dir") else None
         controller = self._controller(root, state_dir)
-        task = controller.intake(contract, root, int(args.get("budget_limit", 12)))
+        task = controller.intake(contract, root, int(args.get("budget_limit", 48 if self.light_mode else 12)))
+        task.scope_files = initial_scope if self.light_mode else []
         task.max_model_seconds = float(args["max_model_seconds"]) if args.get("max_model_seconds") is not None else None
         controller.store.save_task(task)
         self.sessions[session_id] = task.task_id
-        controller.store.event(task.task_id, "opencode_session", {"session_id": session_id, "workspace": str(root), "host": "opencode"})
-        return {"status": "STARTED", "task_id": task.task_id, "workspace": str(root), "phase": task.phase.value}
+        controller.store.event(task.task_id, "opencode_session", {"session_id": session_id, "workspace": str(root), "host": "opencode", "policy_mode": self.policy_mode})
+        return {"status": "STARTED", "task_id": task.task_id, "workspace": str(root), "phase": task.phase.value, "policy_mode": self.policy_mode}
 
     def _broad_workspace_reason(self, root: Path) -> str | None:
-        if not self.require_contract or self.allow_broad_workspace:
+        if self.allow_broad_workspace:
             return None
         home = Path.home().resolve()
         if root == Path("/"):
@@ -298,6 +377,8 @@ class SupervisorBridge:
         if not found:
             tool = str(args.get("tool") or "")
             kind = _tool_kind(tool, args.get("args") if isinstance(args.get("args"), dict) else {})
+            if self.light_mode:
+                return {"decision": "ALLOW", "reason": "light supervision observes normal coding actions without preauthorization"}
             if kind == "supervisor" or kind in {"read_file", "memory_read"} or tool.lower() in READ_TOOLS:
                 return {"decision": "ALLOW", "reason": "read-only discovery is allowed before a contract"}
             if self.require_contract:
@@ -311,7 +392,8 @@ class SupervisorBridge:
         # Supervisor tools are the control plane itself; they are not project
         # actions and must remain callable after a task starts.
         if kind == "supervisor":
-            controller.store.event(task.task_id, "opencode_before", {"tool": tool, "kind": kind, "decision": "ALLOW"})
+            event_kind = "supervisor_refresh" if tool == "orchestrator_status" else "opencode_before"
+            controller.store.event(task.task_id, event_kind, {"tool": tool, "kind": kind, "decision": "ALLOW"})
             return {"decision": "ALLOW"}
         if task.phase == Phase.COMPLETE and kind not in {"read_file", "memory_read"}:
             controller.store.event(task.task_id, "opencode_before", {"tool": tool, "kind": kind, "decision": "BLOCK", "reason": "task is already COMPLETE"})
@@ -328,7 +410,7 @@ class SupervisorBridge:
                 controller.store.event(task.task_id, "opencode_before", {"tool": tool, "kind": kind, "decision": "BLOCK", "reason": "working directory is outside workspace"})
                 return {"decision": "BLOCK", "reason": "working directory is outside the task workspace"}
         root = Path(task.workspace).resolve()
-        if kind == "shell_readonly":
+        if not self.light_mode and kind == "shell_readonly":
             # Safe shell inspection uses the existing read_file contract
             # action; it never becomes a mutation or test action.
             base = Path(str(tool_args.get("workdir") or tool_args.get("cwd") or root)).expanduser()
@@ -337,27 +419,30 @@ class SupervisorBridge:
             if not _readonly_shell_command(_command_from_args(tool_args), root, base) or "read_file" not in task.contract.permitted_actions:
                 controller.store.event(task.task_id, "opencode_before", {"tool": tool, "kind": kind, "decision": "BLOCK", "reason": "shell command is not an audited read-only inspection"})
                 return {"decision": "BLOCK", "reason": "shell command is not an audited read-only inspection"}
-        if kind == "shell" or kind not in set(task.contract.permitted_actions) | READ_TOOLS | WRITE_TOOLS | {"memory_read", "shell_readonly"}:
+        if not self.light_mode and (kind == "shell" or kind not in set(task.contract.permitted_actions) | READ_TOOLS | WRITE_TOOLS | {"memory_read", "shell_readonly"}):
             controller.store.event(task.task_id, "opencode_before", {"tool": tool, "kind": kind, "decision": "BLOCK", "reason": "tool/action is not in the task contract"})
             return {"decision": "BLOCK", "reason": f"{tool} is not an allowed bounded v2 action"}
-        if kind == "run_tests" and ("run_tests" not in task.contract.permitted_actions or not _exact_test_command(_command_from_args(tool_args), task.contract.test_command)):
+        if not self.light_mode and kind == "run_tests" and ("run_tests" not in task.contract.permitted_actions or not _exact_test_command(_command_from_args(tool_args), task.contract.test_command)):
             controller.store.event(task.task_id, "opencode_before", {"tool": tool, "kind": kind, "decision": "BLOCK", "reason": "only the exact configured test command is evidence-producing"})
             return {"decision": "BLOCK", "reason": "test command does not exactly match the contract"}
-        if kind == "write_file" and not path:
+        if not self.light_mode and kind == "write_file" and not path:
             return {"decision": "BLOCK", "reason": "state-changing tool did not provide a file path"}
         if path and self._relative_path(Path(task.workspace).resolve(), path) is None:
             controller.store.event(task.task_id, "opencode_before", {"tool": tool, "kind": kind, "decision": "BLOCK", "path": path, "reason": "path escapes workspace"})
             return {"decision": "BLOCK", "reason": "path escapes the task workspace"}
-        # Contract paths constrain mutations.  Read-only inspection of tests
-        # and neighboring source is intentionally allowed within the workspace.
-        if kind == "write_file" and not self._permitted(task, path):
+        # Strict contracts constrain mutations.  Light mode records every
+        # project-relative path and lets normal task-related work proceed.
+        rel_path = self._track_path(task, path, "observed tool path") if self.light_mode else None
+        if not self.light_mode and kind == "write_file" and not self._permitted(task, path):
             controller.store.event(task.task_id, "opencode_before", {"tool": tool, "kind": kind, "decision": "BLOCK", "path": path, "reason": "path is outside permitted_files"})
             return {"decision": "BLOCK", "reason": f"path is not permitted: {path}"}
-        if kind == "write_file" and controller.store.unresolved_mutations(task.task_id):
+        if not self.light_mode and kind == "write_file" and controller.store.unresolved_mutations(task.task_id):
             return {"decision": "BLOCK", "reason": "an earlier mutation outcome is unresolved; reconcile it before another write"}
-        state = source_hash(root, task.contract.permitted_files)
+        state = source_hash(root, self._scope(task))
         fingerprint = _json_hash({"tool": tool, "kind": kind, "args": tool_args, "state": state})
-        prior = [json.loads(row["payload"]) for row in controller.store.events(task.task_id) if row["kind"] == "opencode_before" and json.loads(row["payload"]).get("action_fingerprint") == fingerprint]
+        event_rows = controller.store.events(task.task_id)
+        last_refresh = max((row["id"] for row in event_rows if row["kind"] == "supervisor_refresh"), default=0)
+        prior = [json.loads(row["payload"]) for row in event_rows if row["id"] > last_refresh and row["kind"] == "opencode_before" and json.loads(row["payload"]).get("action_fingerprint") == fingerprint]
         duplicate = bool(prior)
         if duplicate and kind == "write_file":
             # A confirmed failure after readback is a new decision point; an
@@ -365,13 +450,27 @@ class SupervisorBridge:
             results = [json.loads(row["payload"]) for row in controller.store.events(task.task_id) if row["kind"] == "mutation_result" and json.loads(row["payload"]).get("idempotency_key") == fingerprint]
             duplicate = not any(result.get("status") == "failed" for result in results)
         if duplicate:
+            reason = "same action and relevant source state already occurred without a new state fingerprint"
+            if self.light_mode:
+                repeat_count = len(prior)
+                if repeat_count >= 3:
+                    controller.store.event(task.task_id, "no_progress", {"tool": tool, "action_fingerprint": fingerprint, "stage": "circuit_breaker", "reason": reason})
+                    return {"decision": "BLOCK", "reason": "light supervisor circuit breaker: repeated action made no progress; refresh the plan before retrying", "action_fingerprint": fingerprint}
+                stage = "nudge" if repeat_count == 1 else "plan_refresh"
+                warning = "The previous approach has repeated without new evidence; re-evaluate the plan before retrying the same action."
+                controller.store.event(task.task_id, "no_progress", {"tool": tool, "action_fingerprint": fingerprint, "stage": stage, "reason": reason})
+                controller.store.event(task.task_id, "opencode_before", {"tool": tool, "kind": kind, "decision": "ALLOW", "reason": reason, "action_fingerprint": fingerprint, "state_fingerprint": state})
+                before_state = self._file_state(task, path) if kind == "write_file" and path else None
+                self.pending[str(args.get("call_id") or fingerprint)] = {"task_id": task.task_id, "controller": controller, "kind": kind, "path": path, "fingerprint": fingerprint, "before": before_state, "loop_warning": warning}
+                return {"decision": "ALLOW", "action_fingerprint": fingerprint, "warning": warning, "loop_stage": stage}
             decision = "BLOCK" if kind == "write_file" else "WARN"
-            return {"decision": decision, "reason": "same action and relevant source state already occurred without a new state fingerprint", "action_fingerprint": fingerprint}
+            return {"decision": decision, "reason": reason, "action_fingerprint": fingerprint}
         before_state = self._file_state(task, path) if kind == "write_file" else None
+        workspace_before = self._git_status(root) if self.light_mode and kind == "shell" else None
         if kind == "write_file":
             controller.store.mutation_intent(task.task_id, "opencode:" + tool, fingerprint, {"path": path, "before": before_state, "session_id": args.get("session_id")})
         controller.store.event(task.task_id, "opencode_before", {"tool": tool, "kind": kind, "decision": "ALLOW", "path": path, "action_fingerprint": fingerprint, "state_fingerprint": state})
-        self.pending[str(args.get("call_id") or fingerprint)] = {"task_id": task.task_id, "controller": controller, "kind": kind, "path": path, "fingerprint": fingerprint, "before": before_state}
+        self.pending[str(args.get("call_id") or fingerprint)] = {"task_id": task.task_id, "controller": controller, "kind": kind, "path": path, "fingerprint": fingerprint, "before": before_state, "workspace_before": workspace_before}
         return {"decision": "ALLOW", "action_fingerprint": fingerprint}
 
     def after(self, args: dict[str, Any]) -> dict[str, Any]:
@@ -392,14 +491,37 @@ class SupervisorBridge:
         if pending and pending["kind"] == "write_file":
             after_state = self._file_state(task, pending["path"])
             result.update({"path": pending["path"], "before": pending["before"], "after": after_state})
+            if status == "unknown" and self.light_mode:
+                status = "acknowledged" if not _same_file_state(after_state, pending["before"]) else "failed"
+                result["status"] = status
+                result["reconciled"] = True
             controller.store.mutation_ack(task.task_id, pending["fingerprint"], status, result)
+            if self.light_mode:
+                self._track_path(task, pending["path"], "observed mutation")
+        if pending and pending["kind"] == "shell" and self.light_mode:
+            root = Path(task.workspace).resolve()
+            after_files = self._git_status(root)
+            before_files = pending.get("workspace_before")
+            changed_files = sorted(set(after_files or []) - set(before_files or [])) if after_files is not None and before_files is not None else []
+            for changed in changed_files:
+                self._track_path(task, changed, "shell command changed repository state")
+            result["command"] = _command_from_args(args.get("args", {}) if isinstance(args.get("args"), dict) else {})
+            result["changed_files"] = changed_files
+            result["workspace_state_observed"] = after_files is not None
+            command = result["command"]
+            if exit_code is not None and exit_code == 0 and _looks_like_verification(command):
+                ref = controller.store.evidence(task.task_id, "test", root, {"command": command, "exit_code": exit_code, "timed_out": bool(metadata.get("timed_out")), "output_sha256": result["output_sha256"], "source": "opencode", "classification": "light-observed-verification"}, self._scope(task))
+                result.update({"evidence": "recorded", "evidence_ref": ref})
         if pending and pending["kind"] == "run_tests":
             command = _command_from_args(args.get("args", {}) if isinstance(args.get("args"), dict) else {})
-            if _exact_test_command(command, task.contract.test_command) and exit_code is not None:
-                ref = controller.store.evidence(task.task_id, "test", Path(task.workspace), {"command": command, "exit_code": exit_code, "timed_out": bool(metadata.get("timed_out")), "output_sha256": result["output_sha256"], "source": "opencode"}, task.contract.permitted_files)
+            evidence_allowed = _exact_test_command(command, task.contract.test_command) if not self.light_mode else (exit_code is not None and (_exact_test_command(command, task.contract.test_command) or _looks_like_verification(command)))
+            if evidence_allowed and exit_code is not None:
+                ref = controller.store.evidence(task.task_id, "test", Path(task.workspace), {"command": command, "exit_code": exit_code, "timed_out": bool(metadata.get("timed_out")), "output_sha256": result["output_sha256"], "source": "opencode"}, self._scope(task))
                 result.update({"evidence": "recorded", "evidence_ref": ref})
             else:
                 result["evidence"] = "not_recorded: command or exit status was not authoritative"
+        if pending and pending.get("loop_warning"):
+            result["loop_warning"] = pending["loop_warning"]
         controller.store.event(task.task_id, "tool_call", {"name": pending["kind"] if pending else _tool_kind(str(args.get("tool") or ""), args.get("args") if isinstance(args.get("args"), dict) else {}), "status": status, "source": "opencode"})
         controller.store.event(task.task_id, "opencode_after", result)
         return result
@@ -443,7 +565,7 @@ class SupervisorBridge:
             return {"status": "BLOCKED", "reason": "test evidence is recorded only from an observed run_tests result"}
         payload = dict(args.get("payload") or {})
         payload["source"] = "opencode"
-        ref = controller.store.evidence(task.task_id, kind, Path(task.workspace), payload, task.contract.permitted_files)
+        ref = controller.store.evidence(task.task_id, kind, Path(task.workspace), payload, self._scope(task))
         return {"status": "RECORDED", "ref": ref, "kind": kind}
 
     def finalize(self, args: dict[str, Any]) -> dict[str, Any]:
@@ -451,7 +573,7 @@ class SupervisorBridge:
         if not found:
             return {"status": "BLOCKED", "reason": "no task is associated with this session"}
         controller, task = found
-        current = controller.store.current_successful_check(task.task_id, Path(task.workspace), task.contract.permitted_files)
+        current = controller.store.current_successful_check(task.task_id, Path(task.workspace), self._scope(task))
         if current:
             configured_test = _normal_command_args(task.contract.test_command) or []
             configured_text = " ".join(configured_test)
@@ -467,7 +589,7 @@ class SupervisorBridge:
                 # ordinary contracts use names such as ``all_tests_pass``
                 # without turning arbitrary prose into evidence authority.
                 test_described = bool(configured_text and configured_text in description)
-                if criterion.required and (test_named or test_described) and criterion.status != "verified":
+                if criterion.required and ((test_named or test_described) or (self.light_mode and current.get("kind") == "test")) and criterion.status != "verified":
                     criterion.status = "verified"; criterion.evidence.append(current["ref"]); criterion.verified_source_hash = current["source_hash"]
             controller.store.save_task(task)
         gate = controller.completion_gate(task, Path(task.workspace), review_ok=True)
@@ -492,7 +614,7 @@ class SupervisorBridge:
         if not found:
             return {"status": "BLOCKED", "reason": "no task is associated with this session"}
         _, task = found
-        return {"status": "OK", "candidates": SymbolIndex(Path(task.workspace), task.contract.permitted_files).render(str(args.get("query") or task.contract.goal), limit=min(50, max(1, int(args.get("limit", 20)))))}
+        return {"status": "OK", "candidates": SymbolIndex(Path(task.workspace), self._scope(task)).render(str(args.get("query") or task.contract.goal), limit=min(50, max(1, int(args.get("limit", 20)))))}
 
     def event(self, args: dict[str, Any]) -> dict[str, Any]:
         found = self._task(args.get("session_id"), args.get("task_id"))
@@ -508,14 +630,16 @@ class SupervisorBridge:
     def summary(self, args: dict[str, Any]) -> dict[str, Any]:
         found = self._task(args.get("session_id"), args.get("task_id"))
         if not found:
-            return {"status": "NO_TASK", "strict_mode": self.require_contract}
+            return {"status": "NO_TASK", "strict_mode": self.require_contract, "policy_mode": self.policy_mode}
         controller, task = found
         root = Path(task.workspace)
         gate = controller.completion_gate(task, root, review_ok=True)
         usage = usage_summary(controller.store, task.task_id)
         events = controller.store.events(task.task_id)
-        counts = {"reads": 0, "writes": 0, "tests": 0, "repeated": 0, "no_progress": 0}
+        counts = {"reads": 0, "writes": 0, "tests": 0, "shell": 0, "repeated": 0, "no_progress": 0}
         goal = task.contract.goal
+        loop_warnings: list[dict[str, Any]] = []
+        scope_expansions: list[str] = []
         for row in events:
             try:
                 payload = json.loads(row["payload"])
@@ -526,10 +650,15 @@ class SupervisorBridge:
                 if name in {"read_file", "shell_readonly", "memory_read"}: counts["reads"] += 1
                 elif name == "write_file": counts["writes"] += 1
                 elif name == "run_tests": counts["tests"] += 1
+                elif name == "shell": counts["shell"] += 1
             elif row["kind"] == "no_progress": counts["no_progress"] += 1
             elif row["kind"] == "opencode_before" and payload.get("reason", "").startswith("same action"):
                 counts["repeated"] += 1
             elif row["kind"] == "intake": goal = payload.get("goal", goal)
+            elif row["kind"] == "scope_expanded" and payload.get("path"):
+                scope_expansions.append(str(payload["path"]))
+            elif row["kind"] == "opencode_after" and payload.get("loop_warning"):
+                loop_warnings.append({"stage": "nudge", "warning": payload["loop_warning"]})
         blockers = []
         if not gate.get("allowed"): blockers.append(gate.get("reason"))
         pending = [c.key for c in task.contract.criteria if c.required and c.status != "verified"]
@@ -544,10 +673,11 @@ class SupervisorBridge:
             "workspace": str(Path(task.workspace).resolve()),
             "phase": task.phase.value,
             "goal": goal,
-            # This is the immutable active contract scope.  It is deliberately
-            # concise so the model can recover from a blocked path without
-            # exposing event history, hashes, or secrets.
-            "permitted_files": [Path(item).as_posix() for item in task.contract.permitted_files],
+            # Strict mode exposes its immutable ACL; light mode exposes the
+            # observed scope as telemetry rather than an authorization list.
+            "permitted_files": [Path(item).as_posix() for item in (self._scope(task) or [])],
+            "scope_mode": "dynamic" if self.light_mode else "immutable",
+            "scope_expansions": sorted(dict.fromkeys(scope_expansions))[-100:],
             "permitted_actions": list(task.contract.permitted_actions),
             "test_command": list(task.contract.test_command or []),
             "visual_required": task.contract.visual_required,
@@ -558,8 +688,10 @@ class SupervisorBridge:
             "completion": {"allowed": gate.get("allowed"), "reason": gate.get("reason"), "pending": gate.get("pending", []), "unresolved_mutations": len(gate.get("unresolved_mutations", []))},
             "blockers": list(dict.fromkeys(str(x) for x in blockers if x)),
             "counts": counts,
+            "loop_warnings": loop_warnings[-5:],
             "usage": usage,
             "strict_mode": self.require_contract,
+            "policy_mode": self.policy_mode,
         }
 
     def health(self, args: dict[str, Any]) -> dict[str, Any]:
@@ -568,7 +700,7 @@ class SupervisorBridge:
         workspace = str(Path(str(args.get("workspace") or (found[1].workspace if found else os.getcwd()))).resolve())
         broad_reason = self._broad_workspace_reason(Path(workspace))
         if broad_reason:
-            return {"status": "BLOCKED", "bridge_alive": True, "version": BRIDGE_VERSION, "session_associated": bool(found), "workspace": workspace, "state_db_reachable": False, "strict_mode": self.require_contract, "reason": broad_reason}
+            return {"status": "BLOCKED", "bridge_alive": True, "version": BRIDGE_VERSION, "session_associated": bool(found), "workspace": workspace, "state_db_reachable": False, "strict_mode": self.require_contract, "policy_mode": self.policy_mode, "reason": broad_reason}
         digest = hashlib.sha256(workspace.encode()).hexdigest()[:16]
         state_dir = self.default_state_root / digest
         reachable = True
@@ -579,7 +711,7 @@ class SupervisorBridge:
                 db.execute("SELECT 1").fetchone()
         except Exception:
             reachable = False
-        return {"status": "OK" if reachable else "ERROR", "bridge_alive": True, "version": BRIDGE_VERSION, "session_associated": bool(found), "task_id": found[1].task_id if found else None, "workspace": workspace, "state_db_reachable": reachable, "strict_mode": self.require_contract}
+        return {"status": "OK" if reachable else "ERROR", "bridge_alive": True, "version": BRIDGE_VERSION, "session_associated": bool(found), "task_id": found[1].task_id if found else None, "workspace": workspace, "state_db_reachable": reachable, "strict_mode": self.require_contract, "policy_mode": self.policy_mode}
 
     def end(self, args: dict[str, Any]) -> dict[str, Any]:
         session_id = str(args.get("session_id") or "")

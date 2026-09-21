@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .state import StateStore, Task, TaskContract, source_hash
+from .state import StateStore, Task, TaskContract, source_hash, task_scope
 
 
 def _digest(value: Any, size: int = 16) -> str:
@@ -56,7 +56,7 @@ class LoopMemory:
             "contract_fingerprint": contract_fingerprint(task.contract),
             "goal_fingerprint": _digest(task.contract.goal.strip()),
             "workspace_identity": workspace_identity(root),
-            "state_fingerprint": source_hash(root, task.contract.permitted_files),
+            "state_fingerprint": source_hash(root, task_scope(task)),
         }
 
     def find(self, task: Task, root: Path, *, hypothesis: str, action: str) -> list[CrossRunFinding]:
