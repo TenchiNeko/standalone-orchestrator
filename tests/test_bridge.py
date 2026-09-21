@@ -312,6 +312,18 @@ class BridgeTests(unittest.TestCase):
             self.assertEqual(bridge.before({"session_id": "task", "call_id": "old", "tool": "edit", "args": {"filePath": "app.py"}})["decision"], "BLOCK")
             self.assertEqual(bridge.start({"goal": "new task", "criteria": [{"key": "tests", "description": "tests pass"}]}, "task", str(root))["status"], "STARTED")
 
+    def test_light_stale_evidence_without_prior_path_observation(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict("os.environ", {"V2_POLICY_MODE": "light", "V2_SUPERVISOR_REQUIRE_CONTRACT": "0"}, clear=False):
+            root = Path(directory); (root / "app.py").write_text("x = 1\n")
+            bridge = SupervisorBridge(root / "state")
+            bridge.start({"goal": "verify", "criteria": [{"key": "tests", "description": "tests pass"}]}, "stale-light", str(root))
+            command = {"command": "python3 -m unittest"}
+            bridge.before({"session_id": "stale-light", "call_id": "test", "tool": "bash", "args": command})
+            bridge.after({"session_id": "stale-light", "call_id": "test", "tool": "bash", "args": command, "output": {"output": "OK", "metadata": {"exit": 0}}})
+            self.assertEqual(bridge.finalize({"session_id": "stale-light"})["status"], "COMPLETE")
+            (root / "app.py").write_text("x = 2\n")
+            self.assertNotEqual(bridge.finalize({"session_id": "stale-light"})["status"], "COMPLETE")
+
     def test_light_loop_warning_then_circuit_breaker_and_legitimate_iteration(self):
         with tempfile.TemporaryDirectory() as directory, patch.dict("os.environ", {"V2_POLICY_MODE": "light", "V2_SUPERVISOR_REQUIRE_CONTRACT": "0"}, clear=False):
             root = Path(directory); (root / "app.py").write_text("x = 1\n")

@@ -96,9 +96,13 @@ def source_hash(root: Path, permitted: list[str] | None = None) -> str:
     else:
         paths = [root / p for p in permitted]
     for p in sorted(paths):
-        if p.is_file() and ".git" not in p.parts:
+        if p.is_file() and ".git" not in p.parts and p.exists():
             rel = p.relative_to(root).as_posix()
-            h.update(rel.encode()); h.update(b"\0"); h.update(p.read_bytes())
+            try:
+                data = p.read_bytes()
+            except OSError:
+                continue
+            h.update(rel.encode()); h.update(b"\0"); h.update(data)
     return h.hexdigest()
 
 
@@ -112,9 +116,12 @@ def file_manifest(root: Path, permitted: list[str] | None = None) -> dict[str, d
         paths = [root / p for p in permitted]
     manifest: dict[str, dict[str, Any]] = {}
     for p in sorted(paths):
-        if p.is_file() and ".git" not in p.parts:
+        if p.is_file() and ".git" not in p.parts and p.exists():
             rel = p.relative_to(root).as_posix()
-            data = p.read_bytes()
+            try:
+                data = p.read_bytes()
+            except OSError:
+                continue
             manifest[rel] = {"sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data)}
     return manifest
 
@@ -295,5 +302,8 @@ def new_task(contract: TaskContract, workspace: Path, budget_limit: int = 12) ->
 def task_scope(task: Task) -> list[str] | None:
     """Return the evidence scope without expanding a light task recursively."""
     if "*" in task.contract.permitted_files:
-        return list(task.scope_files)
+        # Before the first observed path, retain stale-evidence correctness by
+        # using the full project fingerprint once.  Normal coding flow quickly
+        # records reads/mutations and then stays incrementally scoped.
+        return list(task.scope_files) if task.scope_files else None
     return list(task.contract.permitted_files)

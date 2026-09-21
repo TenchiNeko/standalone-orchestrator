@@ -230,6 +230,27 @@ class SupervisorBridge:
             controller.store.event(task.task_id, "scope_expanded", payload)
         return rel
 
+    def _seed_light_scope(self, task: Task, controller: Controller) -> None:
+        """Capture a one-time fallback scope before an unobserved verification.
+
+        Normal sessions populate scope through reads/writes first.  This narrow
+        fallback keeps a test run fresh-safe when the model verifies immediately
+        after intake, while excluding the bridge's own state database and common
+        generated trees from the fingerprint.
+        """
+        if not self.light_mode or task.scope_files or "*" not in task.contract.permitted_files:
+            return
+        root = Path(task.workspace).resolve()
+        state_dir = controller.state_dir.resolve()
+        ignored = {".git", "__pycache__", ".pytest_cache", ".venv", "node_modules"}
+        task.scope_files = [
+            p.relative_to(root).as_posix()
+            for p in sorted(root.rglob("*"))
+            if p.is_file() and not any(part in ignored for part in p.relative_to(root).parts) and state_dir not in p.parents and not p.name.endswith((".sqlite3", "-wal", "-shm")) and p.suffix not in {".db", ".sqlite"}
+        ]
+        controller.store.save_task(task)
+        controller.store.event(task.task_id, "scope_seeded", {"count": len(task.scope_files), "reason": "verification started before a path was observed", "mode": "light"})
+
     @staticmethod
     def _git_status(root: Path) -> list[str] | None:
         if not (root / ".git").exists():
@@ -416,6 +437,8 @@ class SupervisorBridge:
                 controller.store.event(task.task_id, "opencode_before", {"tool": tool, "kind": kind, "decision": "BLOCK", "reason": "working directory is outside workspace"})
                 return {"decision": "BLOCK", "reason": "working directory is outside the task workspace"}
         root = Path(task.workspace).resolve()
+        if self.light_mode and kind in {"shell", "run_tests"}:
+            self._seed_light_scope(task, controller)
         if not self.light_mode and kind == "shell_readonly":
             # Safe shell inspection uses the existing read_file contract
             # action; it never becomes a mutation or test action.
