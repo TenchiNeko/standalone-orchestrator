@@ -39,6 +39,16 @@ transitional requests in the old 33--34K range can still reach the backend.
 The backend uses native q8_0-K/q5_1-V Flash Attention and the validated
 per-tensor CUDA0 overrides recorded in the shared workspace run.
 
+The v2 generator also sets a local compaction policy of `auto=true`,
+`prune=true`, and `reserved=4000`. OpenCode 1.18.31 computes the automatic
+threshold as `limit.input - reserved` and includes cached prompt tokens in the
+current total; inheriting the user's ordinary 12000 reserve therefore caused
+this 28K-input model to compact at 16K and repeatedly re-enter above the same
+threshold. The v2-specific 4K reserve yields a 24K threshold while leaving
+headroom below the logical input cap. `V2_COMPACTION_RESERVED` is available as
+a bounded per-launch experiment/rollback override. Ordinary `opencode` keeps
+the user's global compaction settings unchanged.
+
 ## Verified host API
 
 Verified on OpenCode **1.18.31** and `@opencode-ai/plugin` **1.14.48**:

@@ -8,6 +8,21 @@ import sys
 from pathlib import Path
 
 
+DEFAULT_COMPACTION_RESERVED = 4_000
+
+
+def compaction_reserved() -> int:
+    """Return the v2-local compaction headroom without mutating global config."""
+    raw = os.environ.get("V2_COMPACTION_RESERVED", str(DEFAULT_COMPACTION_RESERVED))
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise SystemExit("V2_COMPACTION_RESERVED must be a non-negative integer") from exc
+    if value < 0:
+        raise SystemExit("V2_COMPACTION_RESERVED must be a non-negative integer")
+    return value
+
+
 def main() -> int:
     root = Path(__file__).resolve().parents[1]
     config_path = Path(os.environ.get("OPENCODE_USER_CONFIG", "~/.config/opencode/opencode.json")).expanduser()
@@ -38,6 +53,19 @@ def main() -> int:
         },
     }
     config["provider"] = providers
+    # OpenCode 1.18.31 computes automatic compaction headroom as
+    # model.limit.input - compaction.reserved and counts cached prompt tokens
+    # in the current total.  The user's global 12K reserve therefore starts
+    # this 28K-input local model compacting at 16K and can immediately retrigger
+    # after a summary.  Keep this policy local to v2; ordinary `opencode` keeps
+    # the user's global configuration.  V2_COMPACTION_RESERVED is intentionally
+    # a narrow experiment/rollback knob, with 4K as the validated default.
+    config["compaction"] = {
+        **dict(config.get("compaction") or {}),
+        "auto": True,
+        "prune": True,
+        "reserved": compaction_reserved(),
+    }
     # A command-line -m/--model still wins in OpenCode; otherwise use the
     # verified production local model for this launcher only.
     if not any(arg == "-m" or arg == "--model" or arg.startswith("--model=") for arg in sys.argv[1:]):
