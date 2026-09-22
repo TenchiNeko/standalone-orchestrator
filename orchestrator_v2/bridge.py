@@ -417,6 +417,8 @@ class SupervisorBridge:
         found = self._task(args.get("session_id"), args.get("task_id"))
         if not found:
             tool = str(args.get("tool") or "")
+            if tool.lower() == "worker_delegate":
+                return {"decision": "ALLOW", "reason": "worker delegation is an isolated read-only capability"}
             kind = _tool_kind(tool, args.get("args") if isinstance(args.get("args"), dict) else {})
             if self.light_mode:
                 return {"decision": "ALLOW", "reason": "light supervision observes normal coding actions without preauthorization"}
@@ -428,6 +430,9 @@ class SupervisorBridge:
         controller, task = found
         tool = str(args.get("tool") or "")
         tool_args = args.get("args") if isinstance(args.get("args"), dict) else {}
+        if tool.lower() == "worker_delegate":
+            controller.store.event(task.task_id, "opencode_before", {"tool": tool, "kind": "worker_delegate", "decision": "ALLOW"})
+            return {"decision": "ALLOW"}
         kind = _tool_kind(tool, tool_args, task)
         path = _path_arg(tool_args)
         # Supervisor tools are the control plane itself; they are not project

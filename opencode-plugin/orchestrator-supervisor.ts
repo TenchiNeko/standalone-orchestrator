@@ -109,6 +109,59 @@ function safeArgs(value: unknown): Json {
 
 const MODEL_RESPONSE_BYTES = 4096
 const MODEL_STRING_CHARS = 600
+const WORKER_RESULT_BYTES = 3200
+let workerBusy = false
+
+function workerError(reason: string): string {
+  return JSON.stringify({ status: "ERROR", finding: reason, evidence: [], omitted: "worker investigation unavailable" })
+}
+
+async function runWorkerDelegate(args: Json, workspace: string): Promise<string> {
+  if (workerBusy) return workerError("another worker investigation is already running; continue locally or retry once")
+  workerBusy = true
+  try {
+    return await new Promise<string>((resolve) => {
+      const here = dirname(fileURLToPath(import.meta.url))
+      const script = join(here, "..", "orchestrator_v2", "worker_delegate.py")
+      const child = spawn(process.env.V2_SUPERVISOR_PYTHON || "python3", ["-u", script], {
+        cwd: join(here, ".."),
+        env: { ...process.env, PYTHONPATH: join(here, "..") },
+        stdio: ["pipe", "pipe", "pipe"],
+      })
+      let stdout = ""
+      let stderr = ""
+      let settled = false
+      let timer: ReturnType<typeof setTimeout>
+      const finish = (value: string) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        resolve(value)
+      }
+      timer = setTimeout(() => {
+        child.kill("SIGTERM")
+        finish(workerError("worker delegation timed out; Qwen can continue without it"))
+      }, 125_000)
+      child.stdout.on("data", (chunk: Buffer | string) => { stdout = `${stdout}${String(chunk)}`.slice(-WORKER_RESULT_BYTES * 2) })
+      child.stderr.on("data", (chunk: Buffer | string) => { stderr = `${stderr}${String(chunk)}`.slice(-1000) })
+      child.on("error", () => finish(workerError("worker harness failed to start")))
+      child.on("close", (code) => {
+        if (settled) return
+        try {
+          const value = JSON.parse(stdout.trim()) as Json
+          const encoded = JSON.stringify(value)
+          finish(Buffer.byteLength(encoded, "utf8") <= WORKER_RESULT_BYTES ? encoded : workerError("worker returned an over-sized report"))
+        } catch {
+          finish(workerError(code === 0 ? "worker returned malformed output" : `worker exited without a report${stderr ? `: ${stderr.slice(0, 180)}` : ""}`))
+        }
+      })
+      child.stdin.write(JSON.stringify({ ...args, workspace }) + "\n")
+      child.stdin.end()
+    })
+  } finally {
+    workerBusy = false
+  }
+}
 
 // Keep the bridge's complete state authoritative while making every
 // model-facing response bounded.  This is deliberately a presentation
@@ -284,6 +337,18 @@ const systemInstruction = LIGHT_MODE
           return localResult(await bridge.call({ op: "cancel", session_id: context.sessionID, reason: args.reason || "explicit hosted task cancellation" }))
         },
       }),
+      worker_delegate: tool({
+        description: "Bounded read-only repository investigation; returns a compact report.",
+        args: {
+          role: tool.schema.enum(["scout", "debugger", "reviewer"]),
+          objective: tool.schema.string(),
+          focus_paths: tool.schema.array(tool.schema.string()).optional(),
+        },
+        async execute(args, context) {
+          sessionDirectories.set(context.sessionID, context.directory)
+          return await runWorkerDelegate(args as Json, context.directory)
+        },
+      }),
     },
     event: async ({ event }) => {
       const properties = ((event as unknown as Json).properties || {}) as Json
@@ -305,6 +370,7 @@ const systemInstruction = LIGHT_MODE
       }
     },
     "tool.execute.before": async (input, output) => {
+      if (input.tool === "worker_delegate") return
       const result = await bridge.call({ op: "before", session_id: input.sessionID, call_id: input.callID, tool: input.tool, args: safeArgs(output.args) })
       if (result.decision === "BLOCK") throw new Error(`v2 supervisor blocked ${input.tool}: ${String(result.reason || "deterministic policy")}`)
       // Strict mode fails closed. Light mode is an observer and does not turn
