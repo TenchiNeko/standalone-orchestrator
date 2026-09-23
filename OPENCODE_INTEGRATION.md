@@ -54,7 +54,9 @@ the user's global compaction settings unchanged.
 
 ## Verified host API
 
-Verified on OpenCode **1.18.31** and `@opencode-ai/plugin` **1.14.48**:
+Originally verified on OpenCode **1.18.31** and `@opencode-ai/plugin`
+**1.14.48**; the current integration is regression-tested on OpenCode
+**1.18.32**:
 
 - `tool.execute.before` sees tool, session, call ID, and mutable arguments;
 - `tool.execute.after` sees arguments and result metadata;
@@ -116,16 +118,55 @@ adding a model call or granting any new authority.
 ## Read-only browser evidence
 
 The light and strict plugin paths expose one bounded `browser_investigate`
-tool. It uses the installed `invisible_playwright` package, permits only
-public HTTP(S) targets, optional same-origin navigation, bounded DOM text, and
-an optional screenshot attachment for vision. It does not click, type, run
-JavaScript, access local/private targets, or execute shell commands.
+tool. It permits public HTTP(S) navigation, optional same-origin secondary
+navigation, bounded DOM/selector text, and an opt-in screenshot attachment. It
+does not expose click, type, form submission, arbitrary JavaScript, downloads,
+filesystem access, shell, or proxy selection.
 
-The tool uses system `python3` by default because the v2 virtualenv does not
-own the browser package. Set `V2_INVISIBLE_BROWSER_PYTHON` only when a trusted
-environment provides the package. Proxy use is opt-in through the
-machine-local `V2_INVISIBLE_BROWSER_PROXY_CONFIG` environment variable; the
-model cannot supply a proxy path or credentials, and secrets are never returned.
+Production browsing fails closed unless the host supplies the owner-only
+machine-local proxy file configured by `bin/opencode-v2`. The model cannot
+select the proxy or receive its credentials. A small loopback-only filtering
+proxy validates each browser request and forwards it only through the pinned,
+TLS-authenticated external HTTP proxy; plaintext upstream proxies are rejected.
+There is no direct fallback. Each helper run also authenticates browser-to-local
+proxy requests with an ephemeral credential. The bundled Firefox/Juggler
+does not implement Playwright's request-routing or WebSocket-routing APIs, so
+the implementation does not rely on them. Its single browser-level proxy has
+an empty bypass list, `network.proxy.allow_bypass=false`, and
+`network.proxy.allow_hijacking_localhost=true` (Firefox otherwise bypasses the
+proxy for loopback). Browser DNS prefetch and WebRTC are disabled.
+
+For every HTTP request (including redirects, frames, subresources, fetch, and
+XHR), the filter permits only GET/HEAD/OPTIONS to port 80, rejects URL
+credentials and any non-global DNS answer, and rewrites the proxy destination
+to a validated public IP while preserving the original Host header. HTTPS and
+WSS use CONNECT only to port 443; the filter pins CONNECT to the validated IP,
+while the browser's TLS handshake retains the original hostname/SNI. Hostnames
+are resolved locally only for classification; target connections are made to
+the checked IP through the external proxy, not re-resolved by it. This closes
+the validation/connection DNS-rebinding window.
+Private, loopback, link-local, CGNAT/Tailscale, reserved, and metadata targets
+are rejected. The filter resolves target hostnames locally only for address
+classification, then pins the checked public IP in the request sent through
+the external proxy; it never opens a socket to the target IP itself. Plain
+WebSocket upgrades are rejected; WSS is tunneled only after the same
+destination check. Service workers are disabled with a Firefox
+preference because this Juggler build silently ignores the Playwright context
+option. The proxy rejects attachment and executable-download response types;
+Firefox is configured not to save downloads automatically. WebRTC is disabled.
+Browser page-target traffic can leave Cortana only through the pinned external
+proxy, so a changed/rebound answer cannot create a direct route to Cortana's
+LAN or Tailscale network. The helper's local DNS preflight carries no target
+connection; DNS queries themselves use Cortana's configured resolver. Each
+final navigation URL is checked before page content is returned.
+
+The helper receives a minimal environment, has a bounded request/output and
+runtime, and runs in its own process group. Timeout or host shutdown terminates
+that group and removes its private temporary directory. Helper exceptions and
+stderr are never forwarded; model-visible errors use fixed safe categories.
+Screenshot bytes are size-checked before reading, stripped from result text,
+and attached only when valid and within the 1.5 MB cap. The default is no
+screenshot.
 
 ## Bridge and state
 

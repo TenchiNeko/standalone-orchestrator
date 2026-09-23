@@ -40,6 +40,7 @@ else
 fi
 export V2_SUPERVISOR_PYTHON="${V2_SUPERVISOR_PYTHON:-$ROOT/.venv/bin/python}"
 export V2_SUPERVISOR_STATE="${V2_SUPERVISOR_STATE:-$HOME/.local/state/opencode/orchestrator-v2}"
+export V2_INVISIBLE_BROWSER_PROXY_CONFIG="${V2_INVISIBLE_BROWSER_PROXY_CONFIG:-$HOME/.config/opencode-v2/browser-secrets/browser-proxy.json}"
 export OPENCODE_CONFIG_CONTENT="$(python3 "$ROOT/scripts/build_opencode_config.py" "$@")"
 export XDG_CONFIG_HOME="${V2_OPENCODE_CONFIG_HOME:-$HOME/.config/opencode-v2}"
 exec "$OPEN" "$@"

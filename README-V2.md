@@ -18,7 +18,8 @@ The project-local TypeSafe SDK is installed in `.venv`; no key is required for `
 ## OpenCode hosted mode
 
 `opencode-plugin/orchestrator-supervisor.ts` and
-`orchestrator_v2/bridge.py` provide a project-local OpenCode 1.18.31 adapter.
+`orchestrator_v2/bridge.py` provide a project-local OpenCode adapter,
+originally verified on 1.18.31 and regression-tested on the current 1.18.32.
 OpenCode owns the session/model/tool loop while v2 records policy, evidence,
 mutation uncertainty, stale tests, traces, and deterministic finalization.
 The disposable proof configuration is under

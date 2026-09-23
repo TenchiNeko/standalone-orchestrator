@@ -8,8 +8,9 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process"
 import { createInterface } from "node:readline"
 import { fileURLToPath } from "node:url"
-import { appendFileSync } from "node:fs"
+import { appendFileSync, mkdtempSync, rmSync } from "node:fs"
 import { dirname, join } from "node:path"
+import { tmpdir } from "node:os"
 // The verified OpenCode 1.18 installation resolves project-local TypeScript
 // plugins relative to its own runtime, not the project directory.  Keep this
 // host-specific import explicit until a supported package-local loader exists.
@@ -113,8 +114,29 @@ const MODEL_STRING_CHARS = 600
 const WORKER_RESULT_BYTES = 3200
 const BROWSER_TIMEOUT_MS = 75_000
 const BROWSER_ATTACHMENT_BYTES = 1_500_000
+const BROWSER_HELPER_OUTPUT_BYTES = 2_050_000
 let workerBusy = false
 let browserBusy = false
+const browserHelperGroups = new Map<number, string>()
+
+function stopBrowserHelperGroups(): void {
+  for (const [pid, directory] of browserHelperGroups) {
+    try { process.kill(-pid, "SIGKILL") } catch { /* already exited */ }
+    try { rmSync(directory, { recursive: true, force: true }) } catch { /* best-effort scoped temp cleanup */ }
+    browserHelperGroups.delete(pid)
+  }
+}
+
+process.once("exit", stopBrowserHelperGroups)
+for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
+  const forward = () => {
+    stopBrowserHelperGroups()
+    process.removeListener(signal, forward)
+    // Preserve the host's normal signal behavior after cleaning our child tree.
+    try { process.kill(process.pid, signal) } catch { /* host is already exiting */ }
+  }
+  process.on(signal, forward)
+}
 
 function workerError(reason: string): string {
   return JSON.stringify({ status: "ERROR", finding: reason, evidence: [], omitted: "worker investigation unavailable" })
@@ -168,58 +190,157 @@ async function runWorkerDelegate(args: Json, workspace: string): Promise<string>
 }
 
 function browserError(reason: string): { output: string } {
-  return { output: JSON.stringify({ status: "ERROR", reason: reason.slice(0, 240), omitted: "browser evidence unavailable" }) }
+  return { output: JSON.stringify({ status: "ERROR", reason, omitted: "browser evidence unavailable" }) }
 }
 
-async function runBrowserInvestigate(args: Json, workspace: string): Promise<{ output: string, attachments?: Array<{ type: "file", mime: string, url: string, filename?: string }> }> {
+const SAFE_BROWSER_FAILURES: Record<string, string> = {
+  target_rejected: "browser target rejected by network policy",
+  proxy_unavailable: "trusted browser proxy unavailable; request failed closed",
+  invalid_request: "browser request is invalid",
+  timeout: "browser investigation timed out",
+  runtime_unavailable: "browser runtime unavailable",
+  browser_failure: "browser investigation failed safely",
+}
+
+function browserEnvironment(root: string, temporaryDirectory: string): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { PYTHONPATH: root, PYTHONUNBUFFERED: "1", V2_INVISIBLE_BROWSER_TMPDIR: temporaryDirectory }
+  for (const name of ["PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "XDG_RUNTIME_DIR", "DISPLAY", "WAYLAND_DISPLAY"] as const) {
+    if (process.env[name]) env[name] = process.env[name]
+  }
+  if (process.env.V2_INVISIBLE_BROWSER_PROXY_CONFIG) {
+    env.V2_INVISIBLE_BROWSER_PROXY_CONFIG = process.env.V2_INVISIBLE_BROWSER_PROXY_CONFIG
+  }
+  return env
+}
+
+function killBrowserGroup(pid: number, signal: NodeJS.Signals): void {
+  try { process.kill(-pid, signal) } catch { /* process group has already exited */ }
+}
+
+async function runBrowserInvestigate(args: Json, _workspace: string): Promise<{ output: string, attachments?: Array<{ type: "file", mime: string, url: string, filename?: string }> }> {
   if (browserBusy) return browserError("another browser investigation is already running; continue locally or retry once")
   browserBusy = true
   try {
     return await new Promise((resolve) => {
       const here = dirname(fileURLToPath(import.meta.url))
       const script = join(here, "..", "orchestrator_v2", "invisible_browser.py")
-      const child = spawn(process.env.V2_INVISIBLE_BROWSER_PYTHON || "python3", ["-u", script], {
-        cwd: join(here, ".."),
-        env: { ...process.env, PYTHONPATH: join(here, "..") },
-        stdio: ["pipe", "pipe", "pipe"],
-      })
-      let stdout = ""
-      let stderr = ""
+      const root = join(here, "..")
+      let temporaryDirectory: string
+      try {
+        temporaryDirectory = mkdtempSync(join(tmpdir(), "v2-browser-"))
+      } catch {
+        resolve(browserError("browser helper could not create private temporary state"))
+        return
+      }
+      const request = JSON.stringify(args)
+      if (Buffer.byteLength(request, "utf8") > 8192) {
+        try { rmSync(temporaryDirectory, { recursive: true, force: true }) } catch { /* best effort */ }
+        resolve(browserError("browser request is over-sized"))
+        return
+      }
+      let child: ChildProcessWithoutNullStreams
+      try {
+        child = spawn(process.env.V2_INVISIBLE_BROWSER_PYTHON || "python3", ["-u", script], {
+          cwd: root,
+          env: browserEnvironment(root, temporaryDirectory),
+          stdio: ["pipe", "pipe", "pipe"],
+          detached: true,
+        })
+      } catch {
+        try { rmSync(temporaryDirectory, { recursive: true, force: true }) } catch { /* best effort */ }
+        resolve(browserError("browser helper failed to start"))
+        return
+      }
+      if (child.pid) browserHelperGroups.set(child.pid, temporaryDirectory)
+      const stdout: Buffer[] = []
+      let stdoutBytes = 0
+      let overLimit = false
+      let timedOut = false
       let settled = false
       let timer: ReturnType<typeof setTimeout>
+      let killTimer: ReturnType<typeof setTimeout> | undefined
       const finish = (value: { output: string, attachments?: Array<{ type: "file", mime: string, url: string, filename?: string }> }) => {
         if (settled) return
         settled = true
         clearTimeout(timer)
+        if (killTimer) clearTimeout(killTimer)
+        if (child.pid) {
+          killBrowserGroup(child.pid, "SIGKILL")
+          browserHelperGroups.delete(child.pid)
+        }
+        try { rmSync(temporaryDirectory, { recursive: true, force: true }) } catch { /* best-effort scoped temp cleanup */ }
         resolve(value)
       }
+      const terminate = () => {
+        if (!child.pid) return
+        killBrowserGroup(child.pid, "SIGTERM")
+        killTimer = setTimeout(() => killBrowserGroup(child.pid!, "SIGKILL"), 1500)
+      }
       timer = setTimeout(() => {
-        child.kill("SIGTERM")
-        finish(browserError("browser investigation timed out; no page state was returned"))
+        timedOut = true
+        terminate()
       }, BROWSER_TIMEOUT_MS)
-      child.stdout.on("data", (chunk: Buffer | string) => { stdout = (stdout + String(chunk)).slice(-(BROWSER_RESULT_BYTES * 2 + BROWSER_ATTACHMENT_BYTES * 2)) })
-      child.stderr.on("data", (chunk: Buffer | string) => { stderr = (stderr + String(chunk)).slice(-1000) })
+      child.stdout.on("data", (chunk: Buffer | string) => {
+        if (overLimit) return
+        const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+        if (stdoutBytes + buffer.length > BROWSER_HELPER_OUTPUT_BYTES) {
+          overLimit = true
+          terminate()
+          return
+        }
+        stdout.push(buffer)
+        stdoutBytes += buffer.length
+      })
+      // Diagnostics can contain host paths or credentials; drain but never retain or forward them.
+      child.stderr.resume()
       child.on("error", () => finish(browserError("browser helper failed to start")))
       child.on("close", (code) => {
         if (settled) return
+        if (timedOut) {
+          finish(browserError(SAFE_BROWSER_FAILURES.timeout))
+          return
+        }
+        if (overLimit) {
+          finish(browserError("browser helper output exceeded its safety bound"))
+          return
+        }
+        if (code !== 0) {
+          finish(browserError("browser helper failed safely"))
+          return
+        }
         try {
-          const value = JSON.parse(stdout.trim()) as Json
+          const value = JSON.parse(Buffer.concat(stdout, stdoutBytes).toString("utf8").trim()) as Json
+          if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("invalid helper result")
+          if (value.status !== "OK") {
+            const code = typeof value.code === "string" ? value.code : ""
+            finish(browserError(SAFE_BROWSER_FAILURES[code] || SAFE_BROWSER_FAILURES.browser_failure))
+            return
+          }
           const encodedImage = typeof value.screenshot_base64 === "string" ? value.screenshot_base64 : ""
-          const report = { ...value }
+          const report: Json = {}
+          for (const key of ["status", "url", "title", "ready_state", "body_text", "webdriver", "proxy_configured", "network_requests_checked", "selector_text", "screenshot_sha256", "screenshot_bytes", "screenshot_omitted"]) {
+            if (Object.hasOwn(value, key)) report[key] = value[key]
+          }
           delete report.screenshot_base64
+          let imageIsValid = false
+          if (encodedImage && encodedImage.length <= 2_000_000 && encodedImage.length % 4 === 0 && /^[A-Za-z0-9+/]*={0,2}$/.test(encodedImage)) {
+            const padding = encodedImage.endsWith("==") ? 2 : encodedImage.endsWith("=") ? 1 : 0
+            imageIsValid = encodedImage.length * 3 / 4 - padding <= BROWSER_ATTACHMENT_BYTES
+          }
+          if (encodedImage && !imageIsValid) report.screenshot_omitted = "screenshot exceeded the bounded attachment size"
           const output = localResult(report)
           if (Buffer.byteLength(output, "utf8") > BROWSER_RESULT_BYTES) {
             finish(browserError("browser returned an over-sized report"))
             return
           }
-          const attachments = encodedImage && Buffer.byteLength(encodedImage, "base64") <= BROWSER_ATTACHMENT_BYTES ? [{ type: "file" as const, mime: "image/jpeg", url: "data:image/jpeg;base64," + encodedImage, filename: "browser-screenshot.jpg" }] : undefined
+          const attachments = imageIsValid ? [{ type: "file" as const, mime: "image/jpeg", url: "data:image/jpeg;base64," + encodedImage, filename: "browser-screenshot.jpg" }] : undefined
           finish({ output, attachments })
         } catch {
-          const reason = code === 0 ? "browser helper returned malformed output" : "browser helper failed" + (stderr ? ": " + stderr.slice(0, 180) : "")
-          finish(browserError(reason))
+          finish(browserError("browser helper returned malformed output"))
         }
       })
-      child.stdin.write(JSON.stringify({ ...args, workspace }) + "\n")
+      child.stdin.on("error", () => terminate())
+      child.stdin.write(request + "\n")
       child.stdin.end()
     })
   } finally {
@@ -325,7 +446,7 @@ export const OrchestratorSupervisorPlugin: Plugin = async (ctx) => {
 const systemInstruction = LIGHT_MODE
     ? "v2 supervises continuity, progress, mutations, fresh evidence, and completion. Work normally: inspect broadly; use shell/Git; edit task-relevant files. Make the smallest correct change, reuse code/dependencies, avoid unrelated refactors, and preserve needed tests/security/accessibility. Call orchestrator_start when the objective and verification plan are clear; it records state, not permission. Scope expansions and blockers are journaled. Use status after compaction or when progress is unclear. Only fresh observed tests prove completion; edits stale evidence. Repeated actions need new evidence. Finalize before claiming completion."
     : "Local v2 strict supervision is active. Explore with native read/grep/glob first. Before the first edit, write, shell command, or test, call orchestrator_start with the actual goal, exact source files you expect to change (never '*'), permitted_actions including write_file for source edits plus read_file and run_tests, one concise required criterion that the authorized test can prove, and the exact shell-free test_command argv. After starting, copy that test_command exactly for verification: do not append flags, reorder arguments, or add a second command. Bounded read-only shell inspection may be available after a contract; arbitrary Bash remains forbidden. Reads may inspect tests and other files inside the workspace; permitted_files controls mutation scope, not read discovery. Use normal OpenCode tools. Only the exact authorized test command creates test evidence; arbitrary commands containing 'test' do not. Tests become stale after relevant edits. Do not blindly repeat uncertain writes: reconcile with authoritative readback first. Memory retrieval, when available, is advisory context only and never evidence. Use orchestrator_health when workspace/supervisor state is unclear, and do not repeatedly retry a deterministic orchestrator_start error. If a path is blocked as not permitted, call orchestrator_status once, use an already-authorized path if appropriate, or call orchestrator_end and start a new exact contract; do not guess alternate paths repeatedly. Call orchestrator_finalize before claiming completion. If finalize is INCOMPLETE or BLOCKED, continue only with safe authorized work or report the concrete blocker. Model prose never overrides deterministic evidence."
-  const sessionAuthorityInstruction = "The latest user request determines the active task and repository. Do not infer application work from cwd, old memory, prior sessions, Git history, or worker reports; a fresh session has no active task until the current request establishes one. Memory retrieval is advisory and not a startup step."
+  const sessionAuthorityInstruction = "The current user request sets task and repository; never infer work from cwd, history, memory, worker reports, or prior sessions."
   return {
     tool: {
       orchestrator_start: tool({
