@@ -3822,7 +3822,7 @@ If a method takes args, call it with those args: `obj.method(arg1, arg2)`
                 ])
                 if cls['init_params']:
                     param_strs = []
-                    for name, ptype in cls['init_params'][:4]:  # type: ignore[misc, index]
+                    for name, ptype in cls['init_params'][:4]:  # type: ignore[misc, index, str-unpack]
                         if ptype in ('str', 'String'):
                             param_strs.append(f"{name}='test'")
                         elif ptype in ('int', 'Integer', 'float'):

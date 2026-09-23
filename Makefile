@@ -1,4 +1,6 @@
-.PHONY: help test lint typecheck benchmark benchmark-quick clean
+PYTHON ?= python3
+
+.PHONY: help install test lint typecheck format benchmark benchmark-quick benchmark-l5 benchmark-list clean loc
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
@@ -9,42 +11,39 @@ help: ## Show this help
 # ---------------------------------------------------------------------------
 
 install: ## Install dependencies
-	pip install -r requirements.txt
+	$(PYTHON) -m pip install -r requirements.txt
 
 lint: ## Run ruff linter
-	ruff check standalone_*.py librarian*.py kb_client.py playbook_reader.py benchmark.py
+	$(PYTHON) -m ruff check standalone_*.py librarian*.py kb_client.py playbook_reader.py benchmark.py
 
 typecheck: ## Run mypy type checker
-	mypy --ignore-missing-imports standalone_*.py librarian*.py
+	$(PYTHON) -m mypy --ignore-missing-imports standalone_*.py librarian*.py
 
 format: ## Auto-format code with ruff
-	ruff format standalone_*.py librarian*.py kb_client.py playbook_reader.py benchmark.py
+	$(PYTHON) -m ruff format standalone_*.py librarian*.py kb_client.py playbook_reader.py benchmark.py
 
 # ---------------------------------------------------------------------------
 # Tests (for the orchestrator itself)
 # ---------------------------------------------------------------------------
 
 test: ## Run orchestrator unit tests
-	python3 -m pytest tests/ -v --tb=short
-
-test-coverage: ## Run tests with coverage
-	python3 -m pytest tests/ -v --tb=short --cov=. --cov-report=term-missing
+	$(PYTHON) test_v12_stress.py
 
 # ---------------------------------------------------------------------------
 # Benchmarks
 # ---------------------------------------------------------------------------
 
 benchmark: ## Run full benchmark suite (5 tasks, ~3-5 hours)
-	python3 benchmark.py --suite standard
+	$(PYTHON) benchmark.py --suite standard
 
 benchmark-quick: ## Run only Level 2 task (~15 min)
-	python3 benchmark.py --task 1
+	$(PYTHON) benchmark.py --task 1
 
 benchmark-l5: ## Run Level 5 bookmark manager (~1-2 hours)
-	python3 benchmark.py --task 4
+	$(PYTHON) benchmark.py --task 4
 
 benchmark-list: ## List available benchmark tasks
-	python3 benchmark.py --list
+	$(PYTHON) benchmark.py --list
 
 # ---------------------------------------------------------------------------
 # Maintenance
