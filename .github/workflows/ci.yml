@@ -1,5 +1,8 @@
 name: CI
 
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main]
@@ -7,7 +10,7 @@ on:
     branches: [main]
 
 jobs:
-  lint:
+  checks:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -15,12 +18,16 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
 
       - name: Install dependencies
-        run: pip install ruff mypy httpx types-requests
+        run: python -m pip install -r requirements.txt types-requests
+
+      - name: Run deterministic stress checks
+        run: make PYTHON=python test
 
       - name: Lint with ruff
-        run: ruff check standalone_*.py librarian*.py kb_client.py playbook_reader.py benchmark.py
+        run: make PYTHON=python lint
 
       - name: Type check with mypy
-        run: mypy --ignore-missing-imports standalone_*.py librarian*.py
+        run: make PYTHON=python typecheck

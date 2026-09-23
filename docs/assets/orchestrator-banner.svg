@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="400" viewBox="0 0 1280 400" role="img" aria-labelledby="title desc">
+  <title id="title">Standalone Orchestrator</title>
+  <desc id="desc">A framework-free orchestrator for bounded coding workflows across local language models.</desc>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#070b18"/>
+      <stop offset="0.58" stop-color="#11152b"/>
+      <stop offset="1" stop-color="#1c1236"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#22d3ee"/>
+      <stop offset="0.48" stop-color="#818cf8"/>
+      <stop offset="1" stop-color="#c084fc"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#8b5cf6" stop-opacity="0.32"/>
+      <stop offset="1" stop-color="#8b5cf6" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0H0V40" fill="none" stroke="#b8c6e3" stroke-opacity="0.06"/>
+    </pattern>
+    <filter id="soft-glow" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="9" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect width="1280" height="400" rx="26" fill="url(#background)"/>
+  <rect width="1280" height="400" rx="26" fill="url(#grid)"/>
+  <circle cx="226" cy="197" r="224" fill="url(#glow)"/>
+  <circle cx="1160" cy="36" r="210" fill="url(#glow)" opacity="0.36"/>
+
+  <g transform="translate(116 72)" filter="url(#soft-glow)">
+    <circle cx="124" cy="124" r="79" fill="none" stroke="url(#accent)" stroke-width="10" stroke-dasharray="150 42" stroke-linecap="round"/>
+    <circle cx="124" cy="124" r="34" fill="#11172d" stroke="#c4b5fd" stroke-width="5"/>
+    <path d="M124 90V65M158 124H184M124 158V184M90 124H65" stroke="#dbeafe" stroke-width="5" stroke-linecap="round"/>
+    <circle cx="124" cy="53" r="13" fill="#22d3ee"/>
+    <circle cx="195" cy="124" r="13" fill="#818cf8"/>
+    <circle cx="124" cy="195" r="13" fill="#c084fc"/>
+    <circle cx="53" cy="124" r="13" fill="#38bdf8"/>
+    <path d="M177 66L194 70L189 87" fill="none" stroke="#f8fafc" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <g font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+    <text x="405" y="125" fill="#c4b5fd" font-size="18" font-weight="750" letter-spacing="5">THE UNBROKEN METHOD</text>
+    <text x="402" y="187" fill="#f8fafc" font-size="58" font-weight="780" letter-spacing="4">STANDALONE</text>
+    <text x="402" y="247" fill="#f8fafc" font-size="58" font-weight="780" letter-spacing="3">ORCHESTRATOR</text>
+    <text x="405" y="286" fill="#b8c7dc" font-size="21" font-weight="450">Local models. Explicit loops. Evidence-backed handoffs.</text>
+
+    <g transform="translate(405 316)" font-size="13" font-weight="700" letter-spacing="1.2">
+      <g>
+        <rect width="116" height="34" rx="17" fill="#0e7490" fill-opacity="0.25" stroke="#22d3ee" stroke-opacity="0.64"/>
+        <text x="58" y="22" fill="#a5f3fc" text-anchor="middle">LOCAL-FIRST</text>
+      </g>
+      <g transform="translate(132)">
+        <rect width="132" height="34" rx="17" fill="#4338ca" fill-opacity="0.23" stroke="#818cf8" stroke-opacity="0.66"/>
+        <text x="66" y="22" fill="#c7d2fe" text-anchor="middle">MULTI-AGENT</text>
+      </g>
+      <g transform="translate(280)">
+        <rect width="150" height="34" rx="17" fill="#7e22ce" fill-opacity="0.2" stroke="#c084fc" stroke-opacity="0.64"/>
+        <text x="75" y="22" fill="#e9d5ff" text-anchor="middle">FRAMEWORK-FREE</text>
+      </g>
+    </g>
+  </g>
+
+  <path d="M28 372C224 342 388 388 596 362C820 332 1018 382 1252 348" fill="none" stroke="url(#accent)" stroke-width="2" stroke-opacity="0.28"/>
+</svg>

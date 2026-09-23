@@ -1,28 +1,44 @@
-# 🧠 The Unbroken Method — Standalone Orchestrator
+<p align="center">
+  <img src="docs/assets/orchestrator-banner.svg" alt="Standalone Orchestrator — local models, explicit loops, evidence-backed handoffs" width="100%">
+</p>
 
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![CI](https://github.com/TenchiNeko/standalone-orchestrator/actions/workflows/ci.yml/badge.svg)](https://github.com/TenchiNeko/standalone-orchestrator/actions)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![No Frameworks](https://img.shields.io/badge/frameworks-none-red.svg)](#design-philosophy)
-[![Local LLMs](https://img.shields.io/badge/LLMs-100%25%20local-purple.svg)](#architecture)
+<p align="center">
+  <a href="https://github.com/TenchiNeko/standalone-orchestrator/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/TenchiNeko/standalone-orchestrator/actions/workflows/ci.yml/badge.svg"></a>
+  <img alt="Python 3.10 or newer" src="https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white">
+  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-22c55e.svg"></a>
+  <a href="BENCHMARKS.md"><img alt="Latest recorded benchmark v1.2.2" src="https://img.shields.io/badge/benchmark-v1.2.2-8b5cf6"></a>
+  <img alt="Local-first" src="https://img.shields.io/badge/runtime-local--first-0891b2">
+</p>
 
-**Fully autonomous multi-agent coding system running on local LLMs. Zero API costs.**
+<p align="center"><strong>A framework-free Python orchestrator for bounded, multi-agent coding workflows across local language models.</strong></p>
 
-> Plan → Build → Test → Debug → Fix — iterating until all tests pass, with no human in the loop and no cloud APIs. Runs entirely on your own hardware with Ollama.
+<p align="center">
+  <a href="#why-this-project">Why this project</a> ·
+  <a href="#latest-benchmark-v122">Benchmarks</a> ·
+  <a href="#architecture">Architecture</a> ·
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#design-philosophy">Design</a>
+</p>
 
-Give it a task description. It plans, builds, tests, debugs, and fixes — iterating until all tests pass or it escalates to you with a detailed handoff report. No human in the loop. No cloud APIs. Everything runs on your own GPUs.
+Standalone Orchestrator turns a task description into an explicit plan → build → test → root-cause-analysis loop. Each run is bounded by an iteration limit; successful work produces verification evidence, while unresolved work ends with a handoff instead of looping forever.
 
-### Why This Exists
+The checked-in configuration is local-first and routes work directly to Ollama. The control loop, prompts, routing, repair logic, session state, and trace collection remain visible Python rather than being hidden behind an agent framework.
 
-| | Frameworks (LangChain, CrewAI, AutoGen) | This Project |
-|---|---|---|
-| **Control** | Framework owns the loop, you fill in callbacks | You own every line of the control flow |
-| **Dependencies** | 50+ packages, breaking changes monthly | Python stdlib + httpx |
-| **Debugging** | Stack traces through 12 layers of abstraction | Read the Python, read the Ollama logs |
-| **Lock-in** | Married to the framework's abstractions | Swap Ollama for vLLM/llama.cpp by changing one URL |
-| **Cost** | Usually wraps OpenAI/Anthropic APIs | 100% local, zero API costs |
+> [!IMPORTANT]
+> This is an experimental coding system that can write files and run commands inside the workspace you give it. Start in an isolated repository, review the generated diff, and keep credentials out of the task environment.
 
-### Latest Benchmark (v1.2.2)
+## Why this project
+
+| Design choice | What it provides |
+| --- | --- |
+| **Explicit control flow** | Planning, candidate generation, testing, repair, and escalation are readable code paths. |
+| **Local-first routing** | Default agent profiles use Ollama endpoints on hardware you control. |
+| **Bounded execution** | Iteration limits and verification gates prevent silent, unbounded retry loops. |
+| **Evidence over confidence** | Definition-of-Done checks, test output, traces, and handoffs record what actually happened. |
+| **Small dependency surface** | The runtime is primarily Python's standard library plus `httpx`. |
+| **Inspectable learning loop** | Optional librarian, RAG, trace, playbook, and self-play components stay separable from execution. |
+
+## Latest benchmark (v1.2.2)
 
 ```
 🏁 Running 5 benchmark task(s)...
@@ -66,7 +82,22 @@ ITERATION 3 (targeted edit repair)
 
 ## Architecture
 
+```mermaid
+flowchart TD
+    Goal["Task + workspace"] --> Loop["Bounded orchestration loop"]
+    Loop --> Agents["Explore · plan · build · test"]
+    Agents --> Verify["DoD checks + test evidence"]
+    Verify -->|pass| Result["Completed task + trace"]
+    Verify -->|fail| Repair["RCA + targeted repair"]
+    Repair --> Loop
+    Loop -->|budget exhausted| Handoff["Operator handoff"]
 ```
+
+### Reference deployment
+
+The repository defaults reflect the multi-GPU Ollama deployment used for the recorded benchmarks. Model IDs, endpoints, roles, and context budgets are configurable.
+
+```text
 Cortana (Dell 7920) — 4x GPU, 64GB VRAM
 ┌─────────────────────────────────────────────────────────────┐
 │                                                             │
@@ -289,9 +320,20 @@ PVE Node (homeserver)
 
 ---
 
-## Quick Start
+## Quick start
 
-### 1. Set up Ollama instances
+### 1. Install the project
+
+```bash
+git clone https://github.com/TenchiNeko/standalone-orchestrator.git
+cd standalone-orchestrator
+
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+```
+
+### 2. Set up Ollama instances
 
 ```bash
 # Instance 1: Heavy reasoning (80B)
@@ -305,17 +347,17 @@ OLLAMA_HOST=localhost:11435 ollama pull qwen3-coder-next
 OLLAMA_HOST=localhost:11436 ollama pull qwen2.5-coder:7b
 ```
 
-### 2. Start the RAG Knowledge Base
+### 3. Optional: start the RAG knowledge base
 
 ```bash
-sudo systemctl start rag-kb    # Runs on port 8787
+sudo systemctl start rag-kb    # Reference deployment: port 8787
 ```
 
-### 3. Run a task
+The knowledge-base client has a local fallback, so it is not required for the first run.
+
+### 4. Run a task
 
 ```bash
-cd ~/standalone-orchestrator
-
 python3 standalone_main.py \
   "Build a bookmark manager REST API with Flask. Features: add/remove/update bookmarks
    with URL, title, tags. Search by tag. Pagination. Input validation. SQLite storage." \
@@ -323,9 +365,13 @@ python3 standalone_main.py \
   --working-dir /tmp/bookmark-test
 ```
 
-### 4. Run the benchmark suite
+### 5. Run project checks or benchmarks
 
 ```bash
+make test               # 87 deterministic v1.2 stress checks
+make lint
+make typecheck
+
 make benchmark          # Full suite (5 tasks, ~2-3 hours)
 make benchmark-quick    # Level 2 only (~20 min)
 python3 benchmark.py --task 4   # Single task
