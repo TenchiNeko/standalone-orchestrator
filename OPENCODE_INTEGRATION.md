@@ -113,6 +113,20 @@ deterministic finalizer and appends its bounded result to the test output. This
 helps a model that naturally stops after verification receive `COMPLETE` without
 adding a model call or granting any new authority.
 
+## Read-only browser evidence
+
+The light and strict plugin paths expose one bounded `browser_investigate`
+tool. It uses the installed `invisible_playwright` package, permits only
+public HTTP(S) targets, optional same-origin navigation, bounded DOM text, and
+an optional screenshot attachment for vision. It does not click, type, run
+JavaScript, access local/private targets, or execute shell commands.
+
+The tool uses system `python3` by default because the v2 virtualenv does not
+own the browser package. Set `V2_INVISIBLE_BROWSER_PYTHON` only when a trusted
+environment provides the package. Proxy use is opt-in through the
+machine-local `V2_INVISIBLE_BROWSER_PROXY_CONFIG` environment variable; the
+model cannot supply a proxy path or credentials, and secrets are never returned.
+
 ## Bridge and state
 
 The TypeScript adapter keeps one persistent local child:

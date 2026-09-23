@@ -108,9 +108,13 @@ function safeArgs(value: unknown): Json {
 }
 
 const MODEL_RESPONSE_BYTES = 4096
+const BROWSER_RESULT_BYTES = 3600
 const MODEL_STRING_CHARS = 600
 const WORKER_RESULT_BYTES = 3200
+const BROWSER_TIMEOUT_MS = 75_000
+const BROWSER_ATTACHMENT_BYTES = 1_500_000
 let workerBusy = false
+let browserBusy = false
 
 function workerError(reason: string): string {
   return JSON.stringify({ status: "ERROR", finding: reason, evidence: [], omitted: "worker investigation unavailable" })
@@ -160,6 +164,66 @@ async function runWorkerDelegate(args: Json, workspace: string): Promise<string>
     })
   } finally {
     workerBusy = false
+  }
+}
+
+function browserError(reason: string): { output: string } {
+  return { output: JSON.stringify({ status: "ERROR", reason: reason.slice(0, 240), omitted: "browser evidence unavailable" }) }
+}
+
+async function runBrowserInvestigate(args: Json, workspace: string): Promise<{ output: string, attachments?: Array<{ type: "file", mime: string, url: string, filename?: string }> }> {
+  if (browserBusy) return browserError("another browser investigation is already running; continue locally or retry once")
+  browserBusy = true
+  try {
+    return await new Promise((resolve) => {
+      const here = dirname(fileURLToPath(import.meta.url))
+      const script = join(here, "..", "orchestrator_v2", "invisible_browser.py")
+      const child = spawn(process.env.V2_INVISIBLE_BROWSER_PYTHON || "python3", ["-u", script], {
+        cwd: join(here, ".."),
+        env: { ...process.env, PYTHONPATH: join(here, "..") },
+        stdio: ["pipe", "pipe", "pipe"],
+      })
+      let stdout = ""
+      let stderr = ""
+      let settled = false
+      let timer: ReturnType<typeof setTimeout>
+      const finish = (value: { output: string, attachments?: Array<{ type: "file", mime: string, url: string, filename?: string }> }) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        resolve(value)
+      }
+      timer = setTimeout(() => {
+        child.kill("SIGTERM")
+        finish(browserError("browser investigation timed out; no page state was returned"))
+      }, BROWSER_TIMEOUT_MS)
+      child.stdout.on("data", (chunk: Buffer | string) => { stdout = (stdout + String(chunk)).slice(-(BROWSER_RESULT_BYTES * 2 + BROWSER_ATTACHMENT_BYTES * 2)) })
+      child.stderr.on("data", (chunk: Buffer | string) => { stderr = (stderr + String(chunk)).slice(-1000) })
+      child.on("error", () => finish(browserError("browser helper failed to start")))
+      child.on("close", (code) => {
+        if (settled) return
+        try {
+          const value = JSON.parse(stdout.trim()) as Json
+          const encodedImage = typeof value.screenshot_base64 === "string" ? value.screenshot_base64 : ""
+          const report = { ...value }
+          delete report.screenshot_base64
+          const output = localResult(report)
+          if (Buffer.byteLength(output, "utf8") > BROWSER_RESULT_BYTES) {
+            finish(browserError("browser returned an over-sized report"))
+            return
+          }
+          const attachments = encodedImage && Buffer.byteLength(encodedImage, "base64") <= BROWSER_ATTACHMENT_BYTES ? [{ type: "file" as const, mime: "image/jpeg", url: "data:image/jpeg;base64," + encodedImage, filename: "browser-screenshot.jpg" }] : undefined
+          finish({ output, attachments })
+        } catch {
+          const reason = code === 0 ? "browser helper returned malformed output" : "browser helper failed" + (stderr ? ": " + stderr.slice(0, 180) : "")
+          finish(browserError(reason))
+        }
+      })
+      child.stdin.write(JSON.stringify({ ...args, workspace }) + "\n")
+      child.stdin.end()
+    })
+  } finally {
+    browserBusy = false
   }
 }
 
@@ -261,6 +325,7 @@ export const OrchestratorSupervisorPlugin: Plugin = async (ctx) => {
 const systemInstruction = LIGHT_MODE
     ? "v2 supervises continuity, progress, mutations, fresh evidence, and completion. Work normally: inspect broadly; use shell/Git; edit task-relevant files. Make the smallest correct change, reuse code/dependencies, avoid unrelated refactors, and preserve needed tests/security/accessibility. Call orchestrator_start when the objective and verification plan are clear; it records state, not permission. Scope expansions and blockers are journaled. Use status after compaction or when progress is unclear. Only fresh observed tests prove completion; edits stale evidence. Repeated actions need new evidence. Finalize before claiming completion."
     : "Local v2 strict supervision is active. Explore with native read/grep/glob first. Before the first edit, write, shell command, or test, call orchestrator_start with the actual goal, exact source files you expect to change (never '*'), permitted_actions including write_file for source edits plus read_file and run_tests, one concise required criterion that the authorized test can prove, and the exact shell-free test_command argv. After starting, copy that test_command exactly for verification: do not append flags, reorder arguments, or add a second command. Bounded read-only shell inspection may be available after a contract; arbitrary Bash remains forbidden. Reads may inspect tests and other files inside the workspace; permitted_files controls mutation scope, not read discovery. Use normal OpenCode tools. Only the exact authorized test command creates test evidence; arbitrary commands containing 'test' do not. Tests become stale after relevant edits. Do not blindly repeat uncertain writes: reconcile with authoritative readback first. Memory retrieval, when available, is advisory context only and never evidence. Use orchestrator_health when workspace/supervisor state is unclear, and do not repeatedly retry a deterministic orchestrator_start error. If a path is blocked as not permitted, call orchestrator_status once, use an already-authorized path if appropriate, or call orchestrator_end and start a new exact contract; do not guess alternate paths repeatedly. Call orchestrator_finalize before claiming completion. If finalize is INCOMPLETE or BLOCKED, continue only with safe authorized work or report the concrete blocker. Model prose never overrides deterministic evidence."
+  const sessionAuthorityInstruction = "The latest user request determines the active task and repository. Do not infer application work from cwd, old memory, prior sessions, Git history, or worker reports; a fresh session has no active task until the current request establishes one. Memory retrieval is advisory and not a startup step."
   return {
     tool: {
       orchestrator_start: tool({
@@ -349,6 +414,19 @@ const systemInstruction = LIGHT_MODE
           return await runWorkerDelegate(args as Json, context.directory)
         },
       }),
+      browser_investigate: tool({
+        description: "Read-only invisible browser probe with bounded page text, same-origin navigation, and an optional screenshot for vision.",
+        args: {
+          url: tool.schema.string(),
+          navigate_to: tool.schema.string().optional(),
+          selector: tool.schema.string().optional(),
+          screenshot: tool.schema.boolean().optional(),
+        },
+        async execute(args, context) {
+          sessionDirectories.set(context.sessionID, context.directory)
+          return await runBrowserInvestigate(args as Json, context.directory)
+        },
+      }),
     },
     event: async ({ event }) => {
       const properties = ((event as unknown as Json).properties || {}) as Json
@@ -394,7 +472,7 @@ const systemInstruction = LIGHT_MODE
       }
     },
     "experimental.chat.system.transform": async (_input, output) => {
-      if (Array.isArray(output.system) && !output.system.some((item) => item.includes("orchestrator_finalize"))) output.system.push(systemInstruction)
+      if (Array.isArray(output.system) && !output.system.some((item) => item.includes("orchestrator_finalize"))) output.system.push(systemInstruction + "\n" + sessionAuthorityInstruction)
     },
     "experimental.session.compacting": async (input, output) => {
       const summary = await bridge.call({ op: "summary", session_id: input.sessionID })

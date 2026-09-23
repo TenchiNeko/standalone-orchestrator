@@ -157,6 +157,8 @@ def _tool_kind(tool: str, args: dict[str, Any], task: Task | None = None) -> str
     name = str(tool or "").lower()
     if name.startswith("orchestrator_"):
         return "supervisor"
+    if name == "browser_investigate":
+        return "browser"
     if name in MEMORY_READ_TOOLS:
         return "memory_read"
     if name in READ_TOOLS:
